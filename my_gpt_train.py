@@ -27,7 +27,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './outTS-TrajGen_Porto/chargpt'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -132,7 +132,7 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 if __name__ == '__main__':
     
     
-    model_load=True
+    model_load=False
     num_samples = int(5e3)
 
     # get default config and overrides from the command line, if any
@@ -144,14 +144,14 @@ if __name__ == '__main__':
 
     # construct the training dataset
     text = open('TS-TrajGen_Porto.txt', 'r').read() # don't worry we won't run out of file handles
-    porto_geo=pd.read_csv('/media/ahaydari/2TB_extra/porto_dataset/Porto-Taxi/porto.geo')    
+    porto_geo=pd.read_csv('Porto-Taxi/porto.geo')    
     geo_ids=porto_geo['geo_id'].apply(str).tolist()    
     
     
     train_dataset = CharDataset(config.data, text, geo_ids)
 
     
-    porto_rel=pd.read_csv('/media/ahaydari/2TB_extra/porto_dataset/Porto-Taxi/porto.rel')    
+    porto_rel=pd.read_csv('Porto-Taxi/porto.rel')    
     porto_rel['combined'] = porto_rel.apply(lambda x: list([x['origin_id'], x['destination_id']]),axis=1)
     od_list=porto_rel['combined'].tolist()
     

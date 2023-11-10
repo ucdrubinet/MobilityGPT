@@ -4,3 +4,4 @@ __pycache__/
 .env
 .pylintrc
 *_synthetic
+Porto-Taxi/*
