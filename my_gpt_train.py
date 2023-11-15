@@ -17,6 +17,7 @@ import pickle
 import pandas as pd
 import numpy as np
 from torch.utils.data.sampler import SubsetRandomSampler
+from tqdm import tqdm
 # -----------------------------------------------------------------------------
 
 
@@ -182,11 +183,11 @@ if __name__ == '__main__':
     train_sampler = SubsetRandomSampler(train_indices)
     valid_sampler = SubsetRandomSampler(val_indices)
 
-    # construct the trainer object    
-    trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
-
     adj_matrix=od_pair_to_adjacency_matrix(od_list)
-    adj_matrix = adj_matrix.to(trainer.device)
+    adj_matrix = adj_matrix.to('cuda')
+
+    # construct the trainer object    
+    trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler, adj_matrix=adj_matrix)
 
     # iteration callback
     def batch_end_callback(trainer):
@@ -227,13 +228,13 @@ if __name__ == '__main__':
         trainer.run()
     
     syntehtic_links=[]
-    for i in range(num_samples):
+    for i in tqdm(range(num_samples)):
         try:
             # context = random.sample(train_dataset.data,1)
             context = [train_dataset.BOS_TOKEN]
 
             x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
-            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=False, top_k=None, adj_matrix=adj_matrix)[0]
+            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=40, adj_matrix=adj_matrix)[0]
             d = []
             for i in y[1:]:
                 d.append(int(train_dataset.itos[int(i)]))
