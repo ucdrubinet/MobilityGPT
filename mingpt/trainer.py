@@ -28,12 +28,15 @@ class Trainer:
         C.grad_norm_clip = 1.0
         return C
 
-    def __init__(self, config, model, train_dataset):
+    def __init__(self, config, model, train_dataset, train_sampler, val_sampler):
         self.config = config
         self.model = model
         self.optimizer = None
         self.train_dataset = train_dataset
         self.callbacks = defaultdict(list)
+        self.val_loss = None
+        self.train_sampler = train_sampler
+        self.val_sampler = val_sampler
 
         # determine the device we'll train on
         if config.device == 'auto':
@@ -67,8 +70,15 @@ class Trainer:
         # setup the dataloader
         train_loader = DataLoader(
             self.train_dataset,
-            sampler=torch.utils.data.RandomSampler(self.train_dataset, replacement=True, num_samples=int(1e10)),
-            shuffle=False,
+            sampler=self.train_sampler,
+            pin_memory=True,
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+        )
+
+        val_loader = DataLoader(
+            self.train_dataset,
+            sampler=self.val_sampler,
             pin_memory=True,
             batch_size=config.batch_size,
             num_workers=config.num_workers,
@@ -107,3 +117,20 @@ class Trainer:
             # termination conditions
             if config.max_iters is not None and self.iter_num >= config.max_iters:
                 break
+
+            # add validation
+            if self.iter_num % 100 == 0:
+                model.eval()
+                running_vloss = 0.0
+                # Disable gradient computation and reduce memory consumption.
+                with torch.no_grad():
+                    for i, vdata in enumerate(val_loader):
+                        vinputs, vlabels = vdata
+                        vinputs, vlabels = vinputs.to(self.device), vlabels.to(self.device)
+                        voutputs, vloss = model(vinputs, vlabels)
+                        running_vloss += vloss.item()
+
+                self.val_loss = running_vloss / (i + 1)
+                print('LOSS train {} valid {}'.format(self.loss, self.val_loss ))
+                model.train()
+                self.trigger_callbacks('validation_end')

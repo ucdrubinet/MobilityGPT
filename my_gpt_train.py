@@ -15,6 +15,8 @@ from mingpt.utils import set_seed, setup_logging, CfgNode as CN
 import random
 import pickle
 import pandas as pd
+import numpy as np
+from torch.utils.data.sampler import SubsetRandomSampler
 # -----------------------------------------------------------------------------
 
 
@@ -162,8 +164,26 @@ if __name__ == '__main__':
     config.model.block_size = train_dataset.get_block_size()
     model = GPT(config.model)
 
-    # construct the trainer object
-    trainer = Trainer(config.trainer, model, train_dataset)
+    # split the dataset into a training and validation set
+    validation_split = .2
+    shuffle_dataset = True
+    random_seed= 42
+
+    # Creating data indices for training and validation splits:
+    dataset_size = len(train_dataset)
+    indices = list(range(dataset_size))
+    split = int(np.floor(validation_split * dataset_size))
+    if shuffle_dataset :
+        np.random.seed(random_seed)
+        np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:], indices[:split]
+
+    # Creating PT data samplers and loaders:
+    train_sampler = SubsetRandomSampler(train_indices)
+    valid_sampler = SubsetRandomSampler(val_indices)
+
+    # construct the trainer object    
+    trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
 
     adj_matrix=od_pair_to_adjacency_matrix(od_list)
     adj_matrix = adj_matrix.to(trainer.device)
@@ -193,7 +213,11 @@ if __name__ == '__main__':
             # revert model to training mode
             model.train()
 
+    def validation_end_callback(trainer):
+        print(f"iter_dt {trainer.iter_dt * 1000:.2f}ms; iter {trainer.iter_num}: train loss {trainer.loss.item():.5f} val loss {trainer.val_loss:.5f}")
+
     trainer.set_callback('on_batch_end', batch_end_callback)
+    trainer.add_callback('validation_end', validation_end_callback)
     
     if model_load:
         ckpt_path = os.path.join(config.system.work_dir, "model.pt")
