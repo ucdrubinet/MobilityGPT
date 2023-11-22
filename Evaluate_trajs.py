@@ -2,38 +2,42 @@ import pandas as pd
 from scipy.spatial import distance
 import pickle
 from matplotlib import pyplot as plt
+from tqdm import tqdm
 
 
-df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_test.csv')
+df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train.csv')
 samples=df_porto.sample(n=5000)
 rid_list_list=samples.rid_list.values.tolist()
 
 porto_geo=pd.read_csv('Porto-Taxi/porto.geo')
 
-OD_test=[]
-length_test=[]
-for traj in rid_list_list:
-    link_ids=list(map(int, traj.split(',')))
-    OD_test.append(link_ids[0])
-    OD_test.append(link_ids[-1])
-    length = porto_geo[porto_geo['geo_id'].isin(link_ids)].length.sum()
-    length_test.append(length)
-    
-
-file = open('./TS-TrajGen_Porto_synthetic/chargpt_sample/test_trajectories.txt', 'rb')
+file = open('./TS-TrajGen_Porto_synthetic/chargpt/test_trajectories.txt', 'rb')
 links = pickle.load(file)
 
 OD_synth=[]
 length_synth=[]
-for link_ids in links:
-    OD_synth.append(link_ids[0])
-    OD_synth.append(link_ids[-1])
-    length = porto_geo[porto_geo['geo_id'].isin(link_ids)].length.sum()
-    length_synth.append(length)
+
+OD_test=[]
+length_test=[]
+for i in tqdm(range(len(rid_list_list))):
+    traj=rid_list_list[i]
+    link_ids = links[i]
+    if len(link_ids)>0:
+        OD_synth.append(link_ids[0])
+        OD_synth.append(link_ids[-1])
+        length = porto_geo[porto_geo['geo_id'].isin(link_ids)].length.sum()
+        length_synth.append(length)
+
+        link_ids=list(map(int, traj.split(','))) 
+        OD_test.append(link_ids[0])
+        OD_test.append(link_ids[-1])
+        length = porto_geo[porto_geo['geo_id'].isin(link_ids)].length.sum()
+        length_test.append(length)
+    
 
     
-js_OD=distance.jensenshannon(OD_synth, OD_test)
-js_length=distance.jensenshannon(length_synth, length_test)
+js_OD=distance.jensenshannon(sorted(OD_synth), sorted(OD_test))
+js_length=distance.jensenshannon(sorted(length_synth), sorted(length_test))
     
 OD_synth_count=[OD_synth.count(x) for x in set(OD_synth)]
 OD_test_count=[OD_test.count(x) for x in set(OD_test)]

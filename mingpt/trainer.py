@@ -13,6 +13,7 @@ from scipy.spatial import distance
 import pandas as pd
 from tqdm import tqdm
 import gc
+import random
 
 class Trainer:
 
@@ -22,17 +23,17 @@ class Trainer:
         # device to train on
         C.device = 'cuda'
         # dataloder parameters
-        C.num_workers = 4
+        C.num_workers = 8
         # optimizer parameters
-        C.max_iters = 10000
+        C.max_iters = 3000
         C.batch_size = 64
-        C.learning_rate = 3e-4
+        C.learning_rate = 1e-4
         C.betas = (0.9, 0.95)
         C.weight_decay = 0.1 # only applied on matmul weights
         C.grad_norm_clip = 1.0
         return C
 
-    def __init__(self, config, model, train_dataset, train_sampler, val_sampler, adj_matrix):
+    def __init__(self, config, model, train_dataset, train_sampler, val_sampler):
         self.config = config
         self.model = model
         self.optimizer = None
@@ -41,7 +42,6 @@ class Trainer:
         self.val_loss = None
         self.train_sampler = train_sampler
         self.val_sampler = val_sampler
-        self.adj_matrix = adj_matrix
 
         # determine the device we'll train on
         if config.device == 'auto':
@@ -176,9 +176,10 @@ class Trainer:
                     syntehtic_links=[]
                     for i in tqdm(range(self.test_num_samples)):
                         # context = random.sample(train_dataset.data,1)
-                        context = [self.train_dataset.BOS_TOKEN]
+                        origin = random.sample(self.train_dataset.origins,1)[0]
+                        context = [self.train_dataset.BOS_TOKEN, origin]
                         x = torch.tensor([self.train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(self.device)
-                        y = model.generate_test(x, self.train_dataset.itos, self.train_dataset.EOS_TOKEN, temperature=0.2, do_sample=True, top_k=None, adj_matrix=self.adj_matrix)[0]
+                        y = model.generate_test(x, self.train_dataset.itos, self.train_dataset.EOS_TOKEN, temperature=0.2, do_sample=True, top_k=None, max_token=500)[0]
                         d = []
                         for i in y[1:]:
                             d.append(int(self.train_dataset.itos[int(i)]))

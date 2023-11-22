@@ -2,7 +2,7 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 
-df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory.csv')
+df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train.csv')
 
 rid_list_list=df_porto.rid_list.values.tolist()
 # rid_list_list_sub=rid_list_list[:100000]

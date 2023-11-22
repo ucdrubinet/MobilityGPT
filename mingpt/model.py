@@ -112,12 +112,13 @@ class GPT(nn.Module):
         C.attn_pdrop = 0.1
         return C
 
-    def __init__(self, config):
+    def __init__(self, config, adj_matrix):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.block_size = config.block_size
-
+        self.adj_matrix = adj_matrix
+        
         type_given = config.model_type is not None
         params_given = all([config.n_layer is not None, config.n_head is not None, config.n_embd is not None])
         assert type_given ^ params_given # exactly one of these (XOR)
@@ -272,6 +273,12 @@ class GPT(nn.Module):
         x = self.transformer.ln_f(x)
         logits = self.lm_head(x)
 
+        # # crop the logits based on the adjacency matrix
+        # c_token_adj = self.adj_matrix[idx.reshape(-1,1)].reshape(idx.shape[0], idx.shape[1], -1)
+        # logits=logits*c_token_adj
+
+        # targets=targets*c_token_adj
+        
         # if we are given some desired targets also calculate the loss
         loss = None
         if targets is not None:
@@ -280,12 +287,13 @@ class GPT(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None, adj_matrix=None):
+    def generate(self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
+                
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
@@ -297,12 +305,7 @@ class GPT(nn.Module):
             if top_k is not None:
                 v, _ = torch.topk(logits, top_k)
                 logits[logits < v[:, [-1]]] = -float('Inf')
-            
-            
-            # crop the logits based on the adjacency matrix
-            c_token_adj = adj_matrix[idx[0][-1].item()]
-            logits=logits*c_token_adj
-            
+
             # apply softmax to convert logits to (normalized) probabilities            
             probs = F.softmax(logits, dim=-1)
             # either sample from the distribution or take the most likely element
@@ -316,12 +319,14 @@ class GPT(nn.Module):
         return idx
 
     @torch.no_grad()
-    def generate_test(self, idx, itos, end_token, temperature=1.0, do_sample=False, top_k=None, adj_matrix=None):
+    def generate_test(self, idx, itos, beg_token, end_token, temperature=1.0, do_sample=False, top_k=None, max_token=None):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
+        
+        # self.adj_matrix = self.adj_matrix.to(idx.device)
         while True:
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
@@ -335,7 +340,7 @@ class GPT(nn.Module):
                 logits[logits < v[:, [-1]]] = -float('Inf')
 
             # crop the logits based on the adjacency matrix
-            c_token_adj = adj_matrix[idx[0][-1].item()]
+            c_token_adj = self.adj_matrix[idx[0][-1].item()]
             logits=logits*c_token_adj
             
 
@@ -347,7 +352,7 @@ class GPT(nn.Module):
             else:
                 _, idx_next = torch.topk(probs, k=1, dim=-1)
             # append sampled index to the running sequence and continue
-            if itos[idx_next.item()] == end_token:
+            if itos[idx_next.item()] == end_token or itos[idx_next.item()] == beg_token  or idx.shape[1]==max_token:
                 break
 
             idx = torch.cat((idx, idx_next), dim=1)
