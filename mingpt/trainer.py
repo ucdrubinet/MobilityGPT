@@ -96,13 +96,13 @@ class Trainer:
             num_workers=config.num_workers,
         )
 
-        val_loader = DataLoader(
-            self.train_dataset,
-            sampler=self.val_sampler,
-            pin_memory=True,
-            batch_size=config.batch_size,
-            num_workers=config.num_workers,
-        )
+        # val_loader = DataLoader(
+        #     self.train_dataset,
+        #     sampler=self.val_sampler,
+        #     pin_memory=True,
+        #     batch_size=config.batch_size,
+        #     num_workers=config.num_workers,
+        # )
         
         # calculate statistic for test data
         df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_test.csv')
@@ -152,43 +152,43 @@ class Trainer:
             if config.max_iters is not None and self.iter_num >= config.max_iters:
                 break
 
-            # add validation
-            if self.iter_num % 100 == 0:
-                model.eval()
-                running_vloss = 0.0
-                # Disable gradient computation and reduce memory consumption.
-                with torch.no_grad():
-                    for i, vdata in enumerate(val_loader):
-                        vinputs, vlabels = vdata
-                        vinputs, vlabels = vinputs.to(self.device), vlabels.to(self.device)
-                        voutputs, vloss = model(vinputs, vlabels)
-                        running_vloss += vloss.item()
+            # # add validation
+            # if self.iter_num % 100 == 0:
+            #     model.eval()
+            #     running_vloss = 0.0
+            #     # Disable gradient computation and reduce memory consumption.
+            #     with torch.no_grad():
+            #         for i, vdata in enumerate(val_loader):
+            #             vinputs, vlabels = vdata
+            #             vinputs, vlabels = vinputs.to(self.device), vlabels.to(self.device)
+            #             voutputs, vloss = model(vinputs, vlabels)
+            #             running_vloss += vloss.item()
 
-                self.val_loss = running_vloss / (i + 1)
-                print('LOSS train {} valid {}'.format(self.loss, self.val_loss ))
-                model.train()
-                self.trigger_callbacks('validation_end')
+            #     self.val_loss = running_vloss / (i + 1)
+            #     print('LOSS train {} valid {}'.format(self.loss, self.val_loss ))
+            #     model.train()
+            #     self.trigger_callbacks('validation_end')
 
-            # add statistical testing
-            if self.iter_num % 1000 == 0:
-                try:
-                    start = time.time()
-                    syntehtic_links=[]
-                    for i in tqdm(range(self.test_num_samples)):
-                        # context = random.sample(train_dataset.data,1)
-                        origin = random.sample(self.train_dataset.origins,1)[0]
-                        context = [self.train_dataset.BOS_TOKEN, origin]
-                        x = torch.tensor([self.train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(self.device)
-                        y = model.generate_test(x, self.train_dataset.itos, self.train_dataset.EOS_TOKEN, temperature=0.2, do_sample=True, top_k=None, max_token=500)[0]
-                        d = []
-                        for i in y[1:]:
-                            d.append(int(self.train_dataset.itos[int(i)]))
+            # # add statistical testing
+            # if self.iter_num % 1000 == 0:
+            #     try:
+            #         start = time.time()
+            #         syntehtic_links=[]
+            #         for i in tqdm(range(self.test_num_samples)):
+            #             # context = random.sample(train_dataset.data,1)
+            #             origin = random.sample(self.train_dataset.origins,1)[0]
+            #             context = [self.train_dataset.BOS_TOKEN, origin]
+            #             x = torch.tensor([self.train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(self.device)
+            #             y = model.generate_test(x, self.train_dataset.itos, self.train_dataset.EOS_TOKEN, temperature=0.2, do_sample=True, top_k=None, max_token=500)[0]
+            #             d = []
+            #             for i in y[1:]:
+            #                 d.append(int(self.train_dataset.itos[int(i)]))
 
-                        # d = [int(train_dataset.itos[int(i)]) for i in y]
-                        syntehtic_links.append(d)
-                    js_OD, js_length = self.test_statistic(syntehtic_links, porto_geo, OD_test, length_test)
-                    print('test time: {}, JS OD {}, JS length {}'.format(time.time()-start, js_OD, js_length))
-                except Exception as e:
-                    print(e)
-            model.train()
-            _ = gc.collect()
+            #             # d = [int(train_dataset.itos[int(i)]) for i in y]
+            #             syntehtic_links.append(d)
+            #         js_OD, js_length = self.test_statistic(syntehtic_links, porto_geo, OD_test, length_test)
+            #         print('test time: {}, JS OD {}, JS length {}'.format(time.time()-start, js_OD, js_length))
+            #     except Exception as e:
+            #         print(e)
+            # model.train()
+            # _ = gc.collect()

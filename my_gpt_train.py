@@ -8,6 +8,7 @@ import sys
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
+from torch.nn.functional import normalize
 
 from mingpt.model import GPT
 from mingpt.trainer import Trainer
@@ -16,7 +17,7 @@ import random
 import pickle
 import pandas as pd
 import numpy as np
-from torch.utils.data.sampler import SubsetRandomSampler
+from torch.utils.data.sampler import SubsetRandomSampler, WeightedRandomSampler
 from tqdm import tqdm
 # -----------------------------------------------------------------------------
 
@@ -30,18 +31,18 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample'
 
     # data
     C.data = CharDataset.get_default_config()
 
     # model
     C.model = GPT.get_default_config()
-    C.model.model_type = 'gpt-mini'
+    C.model.model_type = 'gpt-mobility'
 
     # trainer
     C.trainer = Trainer.get_default_config()
-    C.trainer.learning_rate = 5e-4 # the model we're using is so small that we can go a bit faster
+    C.trainer.learning_rate = 5e-3 # the model we're using is so small that we can go a bit faster
 
     return C
 
@@ -82,7 +83,9 @@ class CharDataset(Dataset):
         self.itos[len(vocab)+1] = self.EOS_TOKEN
         
         self.vocab_size = vocab_size + 2 
+        self.num_trajs = len(lines)
         self.data = words
+        self.trajs = line_words
         self.origins = origins
 
     def get_vocab_size(self):
@@ -95,7 +98,13 @@ class CharDataset(Dataset):
         return len(self.data) - self.config.block_size
 
     def __getitem__(self, idx):
-        # grab a chunk of (block_size + 1) characters from the data
+        # # grab a chunk of (block_size + 1) characters from the data
+        # chunk = []
+        # while len(chunk) <= self.config.block_size:
+        #     chunk += self.trajs[idx]
+        #     idx += 1
+        # chunk = chunk[:self.config.block_size + 1]
+    
         chunk = self.data[idx:idx + self.config.block_size + 1]
         # encode every character to an integer
         dix = [self.stoi[s] for s in chunk]
@@ -152,7 +161,14 @@ if __name__ == '__main__':
     porto_geo=pd.read_csv('Porto-Taxi/porto.geo')    
     geo_ids=porto_geo['geo_id'].apply(str).tolist()    
     
+    #load gravity and normalize
+    # gravity = torch.Tensor(np.load('Porto-Taxi/gravity_1000.npy')) 
+    gravity = pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train_w_gravity.csv').gravity.values
+    gravity = torch.Tensor(gravity)
     
+    minimum, maximum = torch.min(gravity), torch.max(gravity)    
+    gravity  = (gravity-minimum)/(maximum-minimum) 
+
     train_dataset = CharDataset(config.data, text, geo_ids)
 
     
@@ -166,7 +182,7 @@ if __name__ == '__main__':
     # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
     config.model.block_size = train_dataset.get_block_size()
-    model = GPT(config.model, adj_matrix)
+    model = GPT(config.model, adj_matrix, gravity)
 
     # split the dataset into a training and validation set
     validation_split = .2
@@ -174,22 +190,42 @@ if __name__ == '__main__':
     random_seed= 42
 
     # Creating data indices for training and validation splits:
-    dataset_size = len(train_dataset)
-    indices = list(range(dataset_size))
-    split = int(np.floor(validation_split * dataset_size))
+
+# # ##############
+#     dataset_size = len(train_dataset)
+#     indices = list(range(dataset_size))
+    
+#     split = int(np.floor(validation_split * dataset_size))
+#     if shuffle_dataset :
+#         np.random.seed(random_seed)
+#         np.random.shuffle(indices)
+#     train_indices, val_indices = indices[split:], indices[:split]
+
+#     # Creating PT data samplers and loaders:
+#     train_sampler = SubsetRandomSampler(train_indices)
+#     valid_sampler = SubsetRandomSampler(val_indices)
+
+#     # construct the trainer object    
+#     trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
+
+# ##############
+    num_trajs = len(train_dataset.trajs)
+    indices = list(range(num_trajs))
+    split = int(np.floor(validation_split * num_trajs))
+
     if shuffle_dataset :
         np.random.seed(random_seed)
         np.random.shuffle(indices)
     train_indices, val_indices = indices[split:], indices[:split]
 
-    # Creating PT data samplers and loaders:
-    train_sampler = SubsetRandomSampler(train_indices)
-    valid_sampler = SubsetRandomSampler(val_indices)
+    train_gravity, val_gravity= gravity[train_indices], gravity[val_indices]
 
-
+    train_sampler = WeightedRandomSampler(train_gravity, len(train_gravity))
+    valid_sampler = WeightedRandomSampler(val_gravity, len(val_gravity))
 
     # construct the trainer object    
     trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
+##############
 
     # iteration callback
     def batch_end_callback(trainer):

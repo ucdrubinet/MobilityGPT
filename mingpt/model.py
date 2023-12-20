@@ -112,12 +112,13 @@ class GPT(nn.Module):
         C.attn_pdrop = 0.1
         return C
 
-    def __init__(self, config, adj_matrix):
+    def __init__(self, config, adj_matrix, gravity):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.block_size = config.block_size
         self.adj_matrix = adj_matrix
+        self.gravity = gravity.reshape(1,-1)
         
         type_given = config.model_type is not None
         params_given = all([config.n_layer is not None, config.n_head is not None, config.n_embd is not None])
@@ -140,11 +141,13 @@ class GPT(nn.Module):
                 'gpt-mini':     dict(n_layer=6, n_head=6, n_embd=192),
                 'gpt-micro':    dict(n_layer=4, n_head=4, n_embd=128),
                 'gpt-nano':     dict(n_layer=3, n_head=3, n_embd=48),
+                'gpt-mobility': dict(n_layer=6, n_head=4, n_embd=64),
             }[config.model_type])
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
+            wgrv = nn.Linear(self.gravity.shape[1], config.n_embd),
             drop = nn.Dropout(config.embd_pdrop),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
             ln_f = nn.LayerNorm(config.n_embd),
@@ -267,7 +270,9 @@ class GPT(nn.Module):
         # forward the GPT model itself
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+        # grav_emb = self.transformer.wgrv(self.gravity.to(device))
         x = self.transformer.drop(tok_emb + pos_emb)
+        # x = self.transformer.drop(tok_emb + pos_emb + grav_emb)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
