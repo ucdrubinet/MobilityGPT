@@ -110,15 +110,18 @@ class GPT(nn.Module):
         C.embd_pdrop = 0.1
         C.resid_pdrop = 0.1
         C.attn_pdrop = 0.1
+        C.device = 'cuda'
         return C
 
-    def __init__(self, config, adj_matrix, gravity):
+    def __init__(self, config, gravity=None, adj_matrix = None, reward_model=False):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.block_size = config.block_size
         self.adj_matrix = adj_matrix
-        self.gravity = gravity.reshape(1,-1)
+        # self.gravity = gravity.reshape(1,-1)
+        self.config = config
+        self.reward_model = reward_model
         
         type_given = config.model_type is not None
         params_given = all([config.n_layer is not None, config.n_head is not None, config.n_embd is not None])
@@ -147,7 +150,7 @@ class GPT(nn.Module):
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
-            wgrv = nn.Linear(self.gravity.shape[1], config.n_embd),
+            # wgrv = nn.Linear(self.gravity.shape[1], config.n_embd),
             drop = nn.Dropout(config.embd_pdrop),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
             ln_f = nn.LayerNorm(config.n_embd),
@@ -270,26 +273,56 @@ class GPT(nn.Module):
         # forward the GPT model itself
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
-        # grav_emb = self.transformer.wgrv(self.gravity.to(device))
         x = self.transformer.drop(tok_emb + pos_emb)
+        # grav_emb = self.transformer.wgrv(self.gravity.to(device))
         # x = self.transformer.drop(tok_emb + pos_emb + grav_emb)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
         logits = self.lm_head(x)
 
-        # # crop the logits based on the adjacency matrix
-        # c_token_adj = self.adj_matrix[idx.reshape(-1,1)].reshape(idx.shape[0], idx.shape[1], -1)
-        # logits=logits*c_token_adj
+        # crop the logits based on the adjacency matrix
+        if self.adj_matrix is not None:
+            c_token_adj = self.adj_matrix[idx.reshape(-1,1)].reshape(idx.shape[0], idx.shape[1], -1)
+            logits = logits*c_token_adj
 
         # targets=targets*c_token_adj
-        
+        if self.reward_model:
+            logits = logits[:,-1,:]
         # if we are given some desired targets also calculate the loss
         loss = None
         if targets is not None:
+            # if not self.reward_model:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            # else:
+                # loss = F.cross_entropy(logits[:,-1,:], targets.view(-1), ignore_index=-1)
 
         return logits, loss
+    
+    def policy(self, idx, targets=None):
+        device = idx.device
+        b, t = idx.size()
+        assert t <= self.block_size, f"Cannot forward sequence of length {t}, block size is only {self.block_size}"
+        pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+
+        # forward the GPT model itself
+        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+        x = self.transformer.drop(tok_emb + pos_emb)
+        # grav_emb = self.transformer.wgrv(self.gravity.to(device))
+        # x = self.transformer.drop(tok_emb + pos_emb + grav_emb)
+        for block in self.transformer.h:
+            x = block(x)
+        x = self.transformer.ln_f(x)
+        logits = self.lm_head(x)
+
+        # crop the logits based on the adjacency matrix
+        if self.adj_matrix is not None:
+            c_token_adj = self.adj_matrix[idx.reshape(-1,1)].reshape(idx.shape[0], idx.shape[1], -1)
+            logits = logits*c_token_adj
+
+        return logits, x
+
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):
@@ -299,39 +332,7 @@ class GPT(nn.Module):
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
                 
-        for _ in range(max_new_tokens):
-            # if the sequence context is growing too long we must crop it at block_size
-            idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
-            # forward the model to get the logits for the index in the sequence
-            logits, _ = self(idx_cond)
-            # pluck the logits at the final step and scale by desired temperature
-            logits = logits[:, -1, :] / temperature
-            # optionally crop the logits to only the top k options
-            if top_k is not None:
-                v, _ = torch.topk(logits, top_k)
-                logits[logits < v[:, [-1]]] = -float('Inf')
-
-            # apply softmax to convert logits to (normalized) probabilities            
-            probs = F.softmax(logits, dim=-1)
-            # either sample from the distribution or take the most likely element
-            if do_sample:
-                idx_next = torch.multinomial(probs, num_samples=1)
-            else:
-                _, idx_next = torch.topk(probs, k=1, dim=-1)
-            # append sampled index to the running sequence and continue
-            idx = torch.cat((idx, idx_next), dim=1)
-
-        return idx
-
-    @torch.no_grad()
-    def generate_test(self, idx, itos, beg_token, end_token, temperature=1.0, do_sample=False, top_k=None, max_token=None):
-        """
-        Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
-        the sequence max_new_tokens times, feeding the predictions back into the model each time.
-        Most likely you'll want to make sure to be in model.eval() mode of operation for this.
-        """
-        
-        # self.adj_matrix = self.adj_matrix.to(idx.device)
+        # for _ in range(max_new_tokens):
         while True:
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
@@ -345,8 +346,50 @@ class GPT(nn.Module):
                 logits[logits < v[:, [-1]]] = -float('Inf')
 
             # crop the logits based on the adjacency matrix
-            c_token_adj = self.adj_matrix[idx[0][-1].item()]
-            logits=logits*c_token_adj
+            if self.adj_matrix is not None:
+                c_token_adj = self.adj_matrix[idx[0][-1].item()]
+                logits=logits*c_token_adj
+        
+
+            # apply softmax to convert logits to (normalized) probabilities            
+            probs = F.softmax(logits, dim=-1)
+            # either sample from the distribution or take the most likely element
+            if do_sample:
+                idx_next = torch.multinomial(probs, num_samples=1)
+            else:
+                _, idx_next = torch.topk(probs, k=1, dim=-1)
+            # append sampled index to the running sequence and continue
+        
+            if idx.shape[1]==max_new_tokens:
+                break
+            idx = torch.cat((idx, idx_next), dim=1)
+
+        return idx
+
+    @torch.no_grad()
+    def generate_test(self, idx, itos=None, beg_token=None, end_token=None, temperature=1.0, do_sample=False, top_k=None, max_token=None):
+        """
+        Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
+        the sequence max_new_tokens times, feeding the predictions back into the model each time.
+        Most likely you'll want to make sure to be in model.eval() mode of operation for this.
+        """
+        
+        while True:
+            # if the sequence context is growing too long we must crop it at block_size
+            idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
+            # forward the model to get the logits for the index in the sequence
+            logits, _ = self(idx_cond)
+            # pluck the logits at the final step and scale by desired temperature
+            logits = logits[:, -1, :] / temperature
+            # optionally crop the logits to only the top k options
+            if top_k is not None:
+                v, _ = torch.topk(logits, top_k)
+                logits[logits < v[:, [-1]]] = -float('Inf')
+
+            # crop the logits based on the adjacency matrix
+            if self.adj_matrix is not None:
+                c_token_adj = self.adj_matrix[idx[0][-1].item()]
+                logits=logits*c_token_adj
             
 
             # apply softmax to convert logits to (normalized) probabilities

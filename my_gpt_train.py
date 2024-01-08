@@ -31,7 +31,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0106'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -87,6 +87,7 @@ class CharDataset(Dataset):
         self.data = words
         self.trajs = line_words
         self.origins = origins
+        self.max_length = max(len(t) for t in self.trajs)
 
     def get_vocab_size(self):
         return self.vocab_size
@@ -148,7 +149,9 @@ if __name__ == '__main__':
     
     model_load=False
     num_samples = int(5e3)
-
+    prompt_size = 4
+    create_RL_dataset = False
+    
     # get default config and overrides from the command line, if any
     config = get_config()
     config.merge_from_args(sys.argv[1:])
@@ -182,7 +185,7 @@ if __name__ == '__main__':
     # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
     config.model.block_size = train_dataset.get_block_size()
-    model = GPT(config.model, adj_matrix, gravity)
+    model = GPT(config.model, adj_matrix = adj_matrix)
 
     # split the dataset into a training and validation set
     validation_split = .2
@@ -266,24 +269,51 @@ if __name__ == '__main__':
     else:    
         # run the optimization
         trainer.run()
-    
-    syntehtic_links=[]
-    for i in tqdm(range(num_samples)):
-        # context = random.sample(train_dataset.data,1)
-        origin = random.sample(train_dataset.origins,1)[0]
-        context = [train_dataset.BOS_TOKEN, origin]
-        x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
-        y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
-        d = []
-        for i in y[1:]:
-            if train_dataset.itos[int(i)]==train_dataset.EOS_TOKEN or train_dataset.itos[int(i)]==train_dataset.BOS_TOKEN:
-                break
-            else:
-                d.append(int(train_dataset.itos[int(i)]))
         
-        syntehtic_links.append(d)
+    if not create_RL_dataset:    
     
-    file = open(config.system.work_dir+'/test_trajectories.txt','wb')
-    pickle.dump(syntehtic_links,file)
+        syntehtic_links=[]
+        for i in tqdm(range(num_samples)):
+            # context = random.sample(train_dataset.data,1)
+            origin = random.sample(train_dataset.origins,1)[0]
+            context = [train_dataset.BOS_TOKEN, origin]
+            x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
+            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, max_token = train_dataset.max_length, temperature=1.0, do_sample=True, top_k=None)[0]
+            d = []
+            for i in y[1:]:
+                if train_dataset.itos[int(i)]==train_dataset.EOS_TOKEN or train_dataset.itos[int(i)]==train_dataset.BOS_TOKEN:
+                    break
+                else:
+                    d.append(int(train_dataset.itos[int(i)]))
+            
+            syntehtic_links.append(d)
+        
+        file = open(config.system.work_dir+'/test_trajectories.txt','wb')
+        pickle.dump(syntehtic_links,file)
+    else:
+        preference_data=[]
+        for i in tqdm(range(num_samples)):
+    
+            traj = random.sample(train_dataset.trajs,1)[0]
+            traj_first_n = traj[:prompt_size]
+            
+            x = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], dtype=torch.long)[None,...].to('cuda')        
+            traj_length = porto_geo[porto_geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
+    
+            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            candidate_0 = [train_dataset.itos[int(i)] for i in y]                
+            length_0 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
+    
+            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            candidate_1 = [train_dataset.itos[int(i)] for i in y]   
+            length_1 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
+            
+            choice = np.argmin([abs(traj_length - length_0), abs(traj_length - length_1)])
+            d = {'input': traj, 'candidate_0':candidate_0, 'candidate_1':candidate_1, 'choice':choice}
+            preference_data.append(d)
+        
+        file = open(config.system.work_dir+'/preference_dataset','wb')
+        pickle.dump(preference_data,file)
+
 
     

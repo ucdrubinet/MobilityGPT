@@ -16,7 +16,7 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-def setup_logging(config):
+def setup_logging(config, name=''):
     """ monotonous bookkeeping """
     work_dir = config.system.work_dir
     # create the work directory if it doesn't already exist
@@ -25,7 +25,7 @@ def setup_logging(config):
     with open(os.path.join(work_dir, 'args.txt'), 'w') as f:
         f.write(' '.join(sys.argv))
     # log the config itself
-    with open(os.path.join(work_dir, 'config.json'), 'w') as f:
+    with open(os.path.join(work_dir, name+'config.json'), 'w') as f:
         f.write(json.dumps(config.to_dict(), indent=4))
 
 class CfgNode:

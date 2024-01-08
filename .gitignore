@@ -5,3 +5,5 @@ __pycache__/
 .pylintrc
 *_synthetic
 Porto-Taxi/*
+*.txt
+
