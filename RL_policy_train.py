@@ -35,7 +35,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_1229'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0106'
 
     # data
     C.data = PromptDataset.get_default_config()
@@ -61,7 +61,7 @@ def get_reward_model_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_1229'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0106'
 
     # # data
     # C.data = PairwiseDataset.get_default_config()
@@ -83,7 +83,7 @@ class PromptDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 64
+        C.block_size = 128
         C.max_length = 50
         return C
 
@@ -184,6 +184,8 @@ if __name__ == '__main__':
     reward_config.model.vocab_size = prompt_dataset.get_vocab_size()
     reward_config.model.block_size = prompt_dataset.get_block_size()
     reward_model = GPT(reward_config.model, reward_model=True)
+    ckpt_path = os.path.join(reward_config.system.work_dir, "reward_model.pt")
+    reward_model.load_state_dict(torch.load(ckpt_path))
     reward_model = reward_model.to('cuda')
     
     #Freeze gradients of reward model as it is not gonna be updated during policy update
@@ -198,6 +200,8 @@ if __name__ == '__main__':
     config.model.vocab_size = prompt_dataset.get_vocab_size()
     config.model.block_size = prompt_dataset.get_block_size()
     model_input = GPT(config.model, adj_matrix)
+    ckpt_path = os.path.join(config.system.work_dir, "model.pt")
+    model_input.load_state_dict(torch.load(ckpt_path))
     model_input = model_input.to(config.model.device)
     
     ref_model = Agent(model_input, trainable=False)
