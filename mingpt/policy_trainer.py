@@ -217,22 +217,6 @@ class PolicyTrainer:
             query_response_list = model.generate(query, eos_id, **self.generate_kwargs)
             query_response_pad = torch.tensor(query_response_list).to(device)
             response = query_response_pad[:, query.shape[1]:]
-            # bos_id = torch.tensor(self.prompt_dataset.stoi[self.prompt_dataset.BOS_TOKEN]).to(model.model.config.device)
-            
-            
-            # response_att_b = query_response.ne(bos_id)
-            # response_att_e = query_response.ne(eos_id)
-            # response_att = response_att_b.logical_and(response_att_e).long()
-            
-            # # Find the index where response_att becomes 0 along the rows
-            # end_traj = (response_att == 0).long().argmax(dim=1)
-            
-
-            # # Replace elements after the end_traj index in each row with eos_id
-            # mask = torch.arange(query_response.shape[1]).unsqueeze(0).to('cuda') >= end_traj.unsqueeze(1)
-            # query_response[mask] = eos_id
-
-            # query_response_pad = query_response.clone()
             attention_mask = query_response_pad.not_equal(eos_id).long()
 
             with torch.no_grad():

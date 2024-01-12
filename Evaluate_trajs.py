@@ -1,7 +1,6 @@
 import pandas as pd
 from scipy.spatial import distance
 import pickle
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 import numpy as np
 
@@ -21,7 +20,7 @@ gps=[lats, lons]
 
     
 
-file = open('./TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample/test_trajectories.txt', 'rb')
+file = open('./TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112/test_trajectories.txt', 'rb')
 links = pickle.load(file)
 
 OD_synth=[]

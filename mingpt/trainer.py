@@ -96,13 +96,13 @@ class Trainer:
             num_workers=config.num_workers,
         )
 
-        # val_loader = DataLoader(
-        #     self.train_dataset,
-        #     sampler=self.val_sampler,
-        #     pin_memory=True,
-        #     batch_size=config.batch_size,
-        #     num_workers=config.num_workers,
-        # )
+        val_loader = DataLoader(
+            self.train_dataset,
+            sampler=self.val_sampler,
+            pin_memory=True,
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+        )
         
         # calculate statistic for test data
         df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_test.csv')
@@ -148,10 +148,6 @@ class Trainer:
             self.iter_dt = tnow - self.iter_time
             self.iter_time = tnow
 
-            # termination conditions
-            if config.max_iters is not None and self.iter_num >= config.max_iters:
-                break
-
             # # add validation
             # if self.iter_num % 100 == 0:
             #     model.eval()
@@ -168,6 +164,11 @@ class Trainer:
             #     print('LOSS train {} valid {}'.format(self.loss, self.val_loss ))
             #     model.train()
             #     self.trigger_callbacks('validation_end')
+
+            # termination conditions
+            if config.max_iters is not None and self.iter_num >= config.max_iters:
+                break
+
 
             # # add statistical testing
             # if self.iter_num % 1000 == 0:

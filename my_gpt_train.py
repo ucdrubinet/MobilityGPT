@@ -31,7 +31,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0106'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -57,6 +57,7 @@ class CharDataset(Dataset):
     def get_default_config():
         C = CN()
         C.block_size = 128
+        C.max_length = 278
         return C
 
     def __init__(self, config, data, vocab):
@@ -87,7 +88,7 @@ class CharDataset(Dataset):
         self.data = words
         self.trajs = line_words
         self.origins = origins
-        self.max_length = max(len(t) for t in self.trajs)
+        # self.max_length = max(len(t) for t in self.trajs)
 
     def get_vocab_size(self):
         return self.vocab_size
@@ -278,7 +279,7 @@ if __name__ == '__main__':
             origin = random.sample(train_dataset.origins,1)[0]
             context = [train_dataset.BOS_TOKEN, origin]
             x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
-            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, max_token = train_dataset.max_length, temperature=1.0, do_sample=True, top_k=None)[0]
+            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, max_token = config.data.max_length, temperature=1.0, do_sample=True, top_k=None)[0]
             d = []
             for i in y[1:]:
                 if train_dataset.itos[int(i)]==train_dataset.EOS_TOKEN or train_dataset.itos[int(i)]==train_dataset.BOS_TOKEN:
