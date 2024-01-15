@@ -5,7 +5,7 @@ from tqdm import tqdm
 import numpy as np
 
 
-df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train.csv')
+df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_test.csv')
 samples=df_porto.sample(n=5000)
 rid_list=samples.rid_list.values.tolist()
 
@@ -20,7 +20,7 @@ gps=[lats, lons]
 
     
 
-file = open('./TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112/test_trajectories.txt', 'rb')
+file = open('./TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample/test_trajectories.txt', 'rb')
 links = pickle.load(file)
 
 OD_synth=[]

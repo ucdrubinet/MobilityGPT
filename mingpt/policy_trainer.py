@@ -104,8 +104,22 @@ class Agent(nn.Module):
     
     def generate(self, input_ids, pad_id, **x):
         responses = []
+        start_len = input_ids.cpu().shape[1]
         for idx in input_ids:
-            response = self.model.generate_test(idx.reshape(1,-1), **x).tolist()[0]
+            response = None
+            previous_idx = None
+            x['temperature'] = 1.0
+            for i in range(10):  # Try 9 times
+                response = self.model.generate_test(idx.reshape(1,-1), **x).tolist()[0]
+                if len(response) > start_len:  # Check if first token is not the end token
+                    break
+                x['temperature'] -= 0.1
+                print("Warning: Empty response generated, retrying")
+                print("")
+                if i == 8: # If we tried 9 times, just take the last one
+                    idx = previous_idx
+                    x['temperature'] = 1.0
+            previous_idx = idx
             response = response + [pad_id.item()] * (x['max_token'] - len(response))
             responses.append(response)
         return responses
@@ -152,7 +166,7 @@ class PolicyTrainer:
         C = CN()
         
         C.seq_length = 278
-        C.batch_size = 64
+        C.batch_size = 128
         C.lr =  0.00006
         C.prompt_size = 30
         C.prompt_batch_size = 128
@@ -182,7 +196,7 @@ class PolicyTrainer:
             beg_token = self.prompt_dataset.BOS_TOKEN,
             end_token = self.prompt_dataset.EOS_TOKEN,
             temperature=1.0,
-            do_sample=False,
+            do_sample=True,
             top_k=None,
         )
         
@@ -240,7 +254,18 @@ class PolicyTrainer:
             all_rewards = [None] * n_trajectories
             for i in range(n_trajectories):
                 rs = rewards[i][start  : ends[i]]
-                rs[-1] = scores[i]
+                try:
+                    rs[-1] = scores[i]
+                except:
+                    print(batch)
+                    print(attention_mask.shape)
+                    print(start)
+                    print(i)
+                    print(ends)
+                    print(ends[i])
+                    print(rewards.shape)
+                    print(rs.shape)
+                    continue
                 all_rewards[i] = rs
 
             new_rollout = [

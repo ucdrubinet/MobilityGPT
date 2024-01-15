@@ -23,6 +23,8 @@ import pandas as pd
 import numpy as np
 from torch.utils.data.sampler import SubsetRandomSampler, WeightedRandomSampler
 from tqdm import tqdm
+import time
+import pandas as pd
 # -----------------------------------------------------------------------------
 
 
@@ -35,7 +37,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0106'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112_1'
 
     # data
     C.data = PromptDataset.get_default_config()
@@ -61,7 +63,7 @@ def get_reward_model_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0106'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112_1'
 
     # # data
     # C.data = PairwiseDataset.get_default_config()
@@ -199,7 +201,12 @@ if __name__ == '__main__':
 
     config.model.vocab_size = prompt_dataset.get_vocab_size()
     config.model.block_size = prompt_dataset.get_block_size()
-    model_input = GPT(config.model, adj_matrix)
+    gravity = pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train_w_gravity.csv').gravity.values
+    gravity = torch.Tensor(gravity)
+    
+    minimum, maximum = torch.min(gravity), torch.max(gravity)    
+    gravity  = (gravity-minimum)/(maximum-minimum) 
+    model_input = GPT(config.model, adj_matrix=adj_matrix, gravity=gravity)
     ckpt_path = os.path.join(config.system.work_dir, "model.pt")
     model_input.load_state_dict(torch.load(ckpt_path))
     model_input = model_input.to(config.model.device)
@@ -210,6 +217,20 @@ if __name__ == '__main__':
     rollout_creator = PolicyTrainer(config.policy, reward_model, prompt_dataset)
     opt = torch.optim.AdamW(model.parameters(), config.policy.learning_rate)
     
+    # calculate statistic for test data
+    df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_test.csv')
+    samples=df_porto.sample(n=100)
+    rid_list_list=samples.rid_list.values.tolist()
+    porto_geo=pd.read_csv('Porto-Taxi/porto.geo')
+    OD_test=[]
+    length_test=[]
+    for traj in rid_list_list:
+        link_ids=list(map(int, traj.split(',')))
+        OD_test.append(link_ids[0])
+        OD_test.append(link_ids[-1])
+        length = porto_geo[porto_geo['geo_id'].isin(link_ids)].length.sum()
+        length_test.append(length)
+
     total_steps = (config.policy.num_rollouts//config.policy.batch_size)*config.policy.ppo_epochs*config.policy.epochs
     tbar = tqdm(initial=0, total=total_steps)
     all_scores = []
@@ -232,5 +253,9 @@ if __name__ == '__main__':
                 tbar.update()
         all_scores.append(score)
         tbar.set_description(f"| score: {score:.3f} |")
+
+        print("iter: ", i)
+        ckpt_path = os.path.join(config.system.work_dir, "model_RL.pt")
+        torch.save(model.model.state_dict(), ckpt_path)
     
     

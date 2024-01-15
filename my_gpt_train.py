@@ -31,7 +31,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112_1'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -148,10 +148,10 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 if __name__ == '__main__':
     
     
-    model_load=False
+    model_load=True
     num_samples = int(5e3)
     prompt_size = 4
-    create_RL_dataset = False
+    create_RL_dataset = True
     
     # get default config and overrides from the command line, if any
     config = get_config()
@@ -186,7 +186,7 @@ if __name__ == '__main__':
     # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
     config.model.block_size = train_dataset.get_block_size()
-    model = GPT(config.model, adj_matrix = adj_matrix)
+    model = GPT(config.model, adj_matrix = adj_matrix, gravity=gravity)
 
     # split the dataset into a training and validation set
     validation_split = .2
