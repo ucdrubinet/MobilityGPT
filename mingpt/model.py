@@ -119,7 +119,8 @@ class GPT(nn.Module):
         assert config.block_size is not None
         self.block_size = config.block_size
         self.adj_matrix = adj_matrix
-        # self.gravity = gravity.reshape(1,-1)
+        if gravity is not None:
+            self.gravity = gravity.reshape(1,-1)
         self.config = config
         self.reward_model = reward_model
         
@@ -146,15 +147,23 @@ class GPT(nn.Module):
                 'gpt-nano':     dict(n_layer=3, n_head=3, n_embd=48),
                 'gpt-mobility': dict(n_layer=6, n_head=4, n_embd=64),
             }[config.model_type])
-
-        self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd),
-            wpe = nn.Embedding(config.block_size, config.n_embd),
-            # wgrv = nn.Linear(self.gravity.shape[1], config.n_embd),
-            drop = nn.Dropout(config.embd_pdrop),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = nn.LayerNorm(config.n_embd),
-        ))
+        if gravity is not None:
+            self.transformer = nn.ModuleDict(dict(
+                wte = nn.Embedding(config.vocab_size, config.n_embd),
+                wpe = nn.Embedding(config.block_size, config.n_embd),
+                wgrv = nn.Linear(self.gravity.shape[1], config.n_embd),
+                drop = nn.Dropout(config.embd_pdrop),
+                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+                ln_f = nn.LayerNorm(config.n_embd),
+            ))
+        else:
+            self.transformer = nn.ModuleDict(dict(
+                wte = nn.Embedding(config.vocab_size, config.n_embd),
+                wpe = nn.Embedding(config.block_size, config.n_embd),
+                drop = nn.Dropout(config.embd_pdrop),
+                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+                ln_f = nn.LayerNorm(config.n_embd),
+            ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         # init all weights, and apply a special scaled init to the residual projections, per GPT-2 paper
