@@ -113,14 +113,12 @@ class GPT(nn.Module):
         C.device = 'cuda'
         return C
 
-    def __init__(self, config, gravity=None, adj_matrix = None, reward_model=False):
+    def __init__(self, config, adj_matrix = None, reward_model=False):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.block_size = config.block_size
         self.adj_matrix = adj_matrix
-        if gravity is not None:
-            self.gravity = gravity.reshape(1,-1)
         self.config = config
         self.reward_model = reward_model
         
@@ -147,23 +145,13 @@ class GPT(nn.Module):
                 'gpt-nano':     dict(n_layer=3, n_head=3, n_embd=48),
                 'gpt-mobility': dict(n_layer=6, n_head=4, n_embd=64),
             }[config.model_type])
-        if gravity is not None:
-            self.transformer = nn.ModuleDict(dict(
-                wte = nn.Embedding(config.vocab_size, config.n_embd),
-                wpe = nn.Embedding(config.block_size, config.n_embd),
-                wgrv = nn.Linear(self.gravity.shape[1], config.n_embd),
-                drop = nn.Dropout(config.embd_pdrop),
-                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-                ln_f = nn.LayerNorm(config.n_embd),
-            ))
-        else:
-            self.transformer = nn.ModuleDict(dict(
-                wte = nn.Embedding(config.vocab_size, config.n_embd),
-                wpe = nn.Embedding(config.block_size, config.n_embd),
-                drop = nn.Dropout(config.embd_pdrop),
-                h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-                ln_f = nn.LayerNorm(config.n_embd),
-            ))
+        self.transformer = nn.ModuleDict(dict(
+            wte = nn.Embedding(config.vocab_size, config.n_embd),
+            wpe = nn.Embedding(config.block_size, config.n_embd),
+            drop = nn.Dropout(config.embd_pdrop),
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            ln_f = nn.LayerNorm(config.n_embd),
+        ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         # init all weights, and apply a special scaled init to the residual projections, per GPT-2 paper
@@ -283,15 +271,13 @@ class GPT(nn.Module):
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
-        # grav_emb = self.transformer.wgrv(self.gravity.to(device))
-        # x = self.transformer.drop(tok_emb + pos_emb + grav_emb)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
         logits = self.lm_head(x)
 
         # crop the logits based on the adjacency matrix
-        if self.adj_matrix is not None:
+        if self.adj_matrix is not None and not self.reward_model:
             c_token_adj = self.adj_matrix[idx.reshape(-1,1)].reshape(idx.shape[0], idx.shape[1], -1)
             logits = logits*c_token_adj
 
@@ -318,8 +304,6 @@ class GPT(nn.Module):
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
-        # grav_emb = self.transformer.wgrv(self.gravity.to(device))
-        # x = self.transformer.drop(tok_emb + pos_emb + grav_emb)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
@@ -382,7 +366,6 @@ class GPT(nn.Module):
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
-        
         while True:
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
@@ -413,5 +396,4 @@ class GPT(nn.Module):
                 break
 
             idx = torch.cat((idx, idx_next), dim=1)
-
         return idx

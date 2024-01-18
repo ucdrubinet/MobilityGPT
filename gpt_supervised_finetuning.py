@@ -33,14 +33,14 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0117'
 
     # data
     C.data = PairwiseDataset.get_default_config()
 
     # model
     C.model = GPT.get_default_config()
-    C.model.model_type = 'gpt-nano'
+    C.model.model_type = 'gpt-mobility'
 
     # trainer
     C.trainer = Trainer.get_default_config()
@@ -50,13 +50,80 @@ def get_config():
 
 # -----------------------------------------------------------------------------
 
+class CharDataset(Dataset):
+    """
+    Emits batches of characters
+    """
+
+    @staticmethod
+    def get_default_config():
+        C = CN()
+        C.block_size = 128
+        C.max_length = 278
+        return C
+
+    def __init__(self, config, data, vocab):
+        self.config = config
+        self.EOS_TOKEN = '</S>'
+        self.BOS_TOKEN = '<S>'
+        
+        lines = data.strip().split('\n\n') 
+        line_words = [[self.BOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
+        words = [item for sublist in line_words for item in sublist]
+        origins = [s[1] for s in line_words]
+        # vocab=list(set(words))
+        # chars = sorted(list(set(data)))
+        data_size, vocab_size = len(words), len(vocab)
+        print('data has %d characters, %d unique.' % (data_size, vocab_size))
+
+        self.stoi = { ch:i for i,ch in enumerate(vocab) }
+        self.itos = { i:ch for i,ch in enumerate(vocab) }
+        
+        self.stoi[self.BOS_TOKEN] = len(vocab)
+        self.itos[len(vocab)] = self.BOS_TOKEN
+        
+        self.stoi[self.EOS_TOKEN] = len(vocab)+1
+        self.itos[len(vocab)+1] = self.EOS_TOKEN
+        
+        self.vocab_size = vocab_size + 2 
+        self.num_trajs = len(lines)
+        self.data = words
+        self.trajs = line_words
+        self.origins = origins
+        # self.max_length = max(len(t) for t in self.trajs)
+
+    def get_vocab_size(self):
+        return self.vocab_size
+
+    def get_block_size(self):
+        return self.config.block_size
+
+    def __len__(self):
+        return len(self.data) - self.config.block_size
+
+    def __getitem__(self, idx):
+        # # grab a chunk of (block_size + 1) characters from the data
+        # chunk = []
+        # while len(chunk) <= self.config.block_size:
+        #     chunk += self.trajs[idx]
+        #     idx += 1
+        # chunk = chunk[:self.config.block_size + 1]
+    
+        chunk = self.data[idx:idx + self.config.block_size + 1]
+        # encode every character to an integer
+        dix = [self.stoi[s] for s in chunk]
+        # return as tensors
+        x = torch.tensor(dix[:-1], dtype=torch.long)
+        y = torch.tensor(dix[1:], dtype=torch.long)
+        return x, y
+
 class PairwiseDataset(Dataset):
     
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 128
-        C.max_length = 100
+        C.block_size = 512
+        C.max_length = 278
         return C
 
     def __init__(self, config, pairs, vocab, data):
@@ -145,6 +212,33 @@ def create_comparison_dataset_ls(config):
         pairs.append(pair)
     return pairs
 
+
+def od_pair_to_adjacency_matrix(od_pair_list):
+    """
+    Converts an od pair to an adjacency matrix.
+
+    Args:
+        od_pair (torch.Tensor): A tensor of od pairs, where each pair is a two-dimensional tensor of the form [source, destination].
+
+    Returns:
+        torch.Tensor: An adjacency matrix
+    """
+
+    od_pair= torch.tensor(od_pair_list)
+    # Create a sparse adjacency matrix.
+    adjacency_matrix = torch.sparse_coo_tensor(od_pair.t(), torch.ones(od_pair.size(0)))
+
+    # Convert the sparse adjacency matrix to a dense adjacency matrix.
+    adjacency_matrix = adjacency_matrix.to_dense()
+
+
+    # Add two new rows of ones and columns at the end of adjacency matrix.
+    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(2, adjacency_matrix.size(0))), 0)
+    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(adjacency_matrix.size(0), 2)), 1)
+
+    # Return the adjacency matrix.
+    return adjacency_matrix
+
 # -----------------------------------------------------------------------------
 
 if __name__ == '__main__':
@@ -166,7 +260,14 @@ if __name__ == '__main__':
     porto_geo=pd.read_csv('Porto-Taxi/porto.geo')    
     geo_ids=porto_geo['geo_id'].apply(str).tolist()    
 
-    # train_dataset = CharDataset(config.data, text, geo_ids)
+    train_dataset = CharDataset(config.data, text, geo_ids)
+    
+    porto_rel=pd.read_csv('Porto-Taxi/porto.rel')    
+    porto_rel['combined'] = porto_rel.apply(lambda x: list([x['origin_id'], x['destination_id']]),axis=1)
+    od_list=porto_rel['combined'].tolist()
+    adj_matrix=od_pair_to_adjacency_matrix(od_list)
+    adj_matrix = adj_matrix.to('cuda')  
+    
 
     pairs = create_comparison_dataset_ls(config)
     reward_dataset = PairwiseDataset(config.data, pairs, geo_ids, text)
@@ -175,9 +276,12 @@ if __name__ == '__main__':
     # construct the model
     config.model.vocab_size = reward_dataset.get_vocab_size()
     config.model.block_size = reward_dataset.get_block_size()
-    reward_model = GPT(config.model, reward_model=True)
-    reward_model = reward_model.to('cuda')
+    pretrained_model = GPT(config.model, adj_matrix = adj_matrix, reward_model=True)
+    pretrained_model = pretrained_model.to('cuda')
 
+    ckpt_path = os.path.join(config.system.work_dir, "model.pt")
+    pretrained_model.load_state_dict(torch.load(ckpt_path))
+    pretrained_model = pretrained_model.to(config.model.device)
 
     # split the dataset into a training and validation set
     validation_split = .2
@@ -186,7 +290,6 @@ if __name__ == '__main__':
 
     # Creating data indices for training and validation splits:
 
-# ##############
     dataset_size = len(reward_dataset)
     indices = list(range(dataset_size))
     
@@ -201,7 +304,7 @@ if __name__ == '__main__':
     valid_sampler = SubsetRandomSampler(val_indices)
 
     # construct the trainer object    
-    trainer = RewardTrainer(config.trainer, reward_model, reward_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
+    trainer = RewardTrainer(config.trainer, pretrained_model, reward_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
 
 
     # iteration callback
@@ -210,10 +313,28 @@ if __name__ == '__main__':
         if trainer.iter_num % 10 == 0:
             print(f"iter_dt {trainer.iter_dt * 1000:.2f}ms; iter {trainer.iter_num}: train loss {trainer.loss.item():.5f}")
         if trainer.iter_num % 250 == 0:
-            ckpt_path = os.path.join(config.system.work_dir, "reward_model.pt")
-            torch.save(reward_model.state_dict(), ckpt_path)
-            reward_model.train()
+            ckpt_path = os.path.join(config.system.work_dir, "fine_tuned_model.pt")
+            torch.save(pretrained_model.state_dict(), ckpt_path)
+            pretrained_model.train()
 
     trainer.set_callback('on_batch_end', batch_end_callback)
     trainer.run()
     
+    pretrained_model.reward_model=False
+    syntehtic_links=[]
+    for i in tqdm(range(num_samples)):
+        origin = random.sample(train_dataset.origins,1)[0]
+        context = [train_dataset.BOS_TOKEN, origin]
+        x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
+        y = pretrained_model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, max_token = config.data.max_length, temperature=1.0, do_sample=True, top_k=None)[0]
+        d = []
+        for i in y[1:]:
+            if train_dataset.itos[int(i)]==train_dataset.EOS_TOKEN or train_dataset.itos[int(i)]==train_dataset.BOS_TOKEN:
+                break
+            else:
+                d.append(int(train_dataset.itos[int(i)]))
+        
+        syntehtic_links.append(d)
+    
+    file = open(config.system.work_dir+'/test_SF_trajectories.txt','wb')
+    pickle.dump(syntehtic_links,file)

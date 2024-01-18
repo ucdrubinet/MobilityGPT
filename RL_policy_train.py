@@ -37,7 +37,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112_1'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112'
 
     # data
     C.data = PromptDataset.get_default_config()
@@ -63,7 +63,7 @@ def get_reward_model_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112_1'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0112'
 
     # # data
     # C.data = PairwiseDataset.get_default_config()
@@ -85,8 +85,8 @@ class PromptDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 128
-        C.max_length = 50
+        C.block_size = 512
+        C.max_length = 278
         return C
 
     def __init__(self, config, data, vocab, prompt_size):

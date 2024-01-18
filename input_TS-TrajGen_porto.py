@@ -1,5 +1,5 @@
-import numpy as np
-import geopandas as gpd
+# import numpy as np
+# import geopandas as gpd
 import pandas as pd
 
 df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train.csv')

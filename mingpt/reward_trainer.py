@@ -8,12 +8,12 @@ from collections import defaultdict
 
 import torch
 from torch.utils.data.dataloader import DataLoader
-from mingpt.utils import CfgNode as CN
-from scipy.spatial import distance
-import pandas as pd
-from tqdm import tqdm
-import gc
-import random
+# from mingpt.utils import CfgNode as CN
+# from scipy.spatial import distance
+# import pandas as pd
+# from tqdm import tqdm
+# import gc
+# import random
 
 class RewardTrainer:
 
@@ -27,7 +27,7 @@ class RewardTrainer:
         self.val_loss = None
         self.train_sampler = train_sampler
         self.val_sampler = val_sampler
-        self.max_iters = 250
+        self.max_iters = 3000
 
         # determine the device we'll train on
         if config.device == 'auto':

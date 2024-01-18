@@ -196,7 +196,7 @@ class PolicyTrainer:
             beg_token = self.prompt_dataset.BOS_TOKEN,
             end_token = self.prompt_dataset.EOS_TOKEN,
             temperature=1.0,
-            do_sample=True,
+            do_sample=False,
             top_k=None,
         )
         
@@ -254,18 +254,7 @@ class PolicyTrainer:
             all_rewards = [None] * n_trajectories
             for i in range(n_trajectories):
                 rs = rewards[i][start  : ends[i]]
-                try:
-                    rs[-1] = scores[i]
-                except:
-                    print(batch)
-                    print(attention_mask.shape)
-                    print(start)
-                    print(i)
-                    print(ends)
-                    print(ends[i])
-                    print(rewards.shape)
-                    print(rs.shape)
-                    continue
+                rs[-1] = scores[i]
                 all_rewards[i] = rs
 
             new_rollout = [
