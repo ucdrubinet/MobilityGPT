@@ -30,8 +30,8 @@ def get_config():
 
     # system
     C.system = CN()
-    C.system.seed = 512
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0117_1'
+    C.system.seed = 128
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0118_278_300'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -56,7 +56,7 @@ class CharDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 512
+        C.block_size = 300
         C.max_length = 278
         return C
 
@@ -148,10 +148,12 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 if __name__ == '__main__':
     
     
-    model_load = False
+    model_load = True
     num_samples = int(5e3)
     prompt_size = 4
     create_RL_dataset = False
+    create_DPO_dataset = True
+    assert create_DPO_dataset == True and create_RL_dataset == False, "Only one of the two datasets can be created at a time"
     
     # get default config and overrides from the command line, if any
     config = get_config()
@@ -271,8 +273,8 @@ if __name__ == '__main__':
         # run the optimization
         trainer.run()
         
-    if not create_RL_dataset:    
-    
+    if (not create_RL_dataset) and (not create_DPO_dataset):    
+        print('Creating synthetic trajectories')
         syntehtic_links=[]
         for i in tqdm(range(num_samples)):
             # context = random.sample(train_dataset.data,1)
@@ -291,7 +293,8 @@ if __name__ == '__main__':
         
         file = open(config.system.work_dir+'/test_trajectories.txt','wb')
         pickle.dump(syntehtic_links,file)
-    else:
+    elif create_RL_dataset:
+        print('Creating RL dataset')
         preference_data=[]
         for i in tqdm(range(num_samples)):
     
@@ -315,6 +318,55 @@ if __name__ == '__main__':
         
         file = open(config.system.work_dir+'/preference_dataset','wb')
         pickle.dump(preference_data,file)
+    elif create_DPO_dataset:
+        print("Creating DPO dataset")
+        preference_data=[]
+        for i in tqdm(range(num_samples)):
+    
+            traj = random.sample(train_dataset.trajs,1)[0]
+            traj_first_n = traj[:prompt_size]
+            
+            x = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], dtype=torch.long)[None,...].to('cuda')        
+            traj_length = porto_geo[porto_geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
+    
+            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            candidate_0 = [train_dataset.itos[int(i)] for i in y]                
+            length_0 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
+    
+            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            candidate_1 = [train_dataset.itos[int(i)] for i in y]   
+            length_1 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
+            
+            choice = np.argmin([abs(traj_length - length_0), abs(traj_length - length_1)])
+            chosen_response = candidate_0 if choice==0 else candidate_1
+            rejected_response = candidate_1 if choice==0 else candidate_0
+
+            prompt_tokens = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], dtype=torch.long)[None,...].to('cuda')
+            chosen_response_tokens = torch.tensor([train_dataset.stoi[s] for s in chosen_response], dtype=torch.long)[None,...].to('cuda')
+            rejected_response_tokens = torch.tensor([train_dataset.stoi[s] for s in rejected_response], dtype=torch.long)[None,...].to('cuda')
+
+            prompt_chosen_tokens = torch.cat([prompt_tokens, chosen_response_tokens], dim=1)
+            prompt_rejected_tokens = torch.cat([prompt_tokens, rejected_response_tokens], dim=1)
+
+            chosen_loss_mask = torch.cat(
+                [torch.zeros(prompt_tokens.shape), torch.ones(chosen_response_tokens.shape)], dim=1
+            )
+            rejected_loss_mask = torch.cat(
+                [torch.zeros(prompt_tokens.shape), torch.ones(rejected_response_tokens.shape)], dim=1
+            )
+
+            dataset_example = {
+                'prompt_chosen_tokens': prompt_chosen_tokens.squeeze(),
+                'prompt_rejected_tokens': prompt_rejected_tokens.squeeze(),
+                'chosen_loss_mask': chosen_loss_mask.squeeze(),
+                'rejected_loss_mask': rejected_loss_mask.squeeze()
+            }
+
+            preference_data.append(dataset_example)
+        
+        torch.save(preference_data, config.system.work_dir+'/dpo_preference_dataset.pt')
+
+
 
 
     

@@ -105,21 +105,22 @@ class Agent(nn.Module):
     def generate(self, input_ids, pad_id, **x):
         responses = []
         start_len = input_ids.cpu().shape[1]
-        for idx in input_ids:
+        for idx in range(len(input_ids)):
             response = None
-            previous_idx = None
             x['temperature'] = 1.0
             for i in range(10):  # Try 9 times
-                response = self.model.generate_test(idx.reshape(1,-1), **x).tolist()[0]
+                response = self.model.generate_test(input_ids[idx].reshape(1,-1), **x).tolist()[0]
                 if len(response) > start_len:  # Check if first token is not the end token
                     break
                 x['temperature'] -= 0.1
                 print("Warning: Empty response generated, retrying")
                 print("")
-                if i == 8: # If we tried 9 times, just take the last one
-                    idx = previous_idx
+                if i == 8: 
+                    if idx > 0: # If we tried 9 times, just take the last one
+                        input_ids[idx] = input_ids[idx-1]
+                    else: # If we tried 9 times and idx == 0, take the next one
+                        input_ids[idx] = input_ids[idx+1]
                     x['temperature'] = 1.0
-            previous_idx = idx
             response = response + [pad_id.item()] * (x['max_token'] - len(response))
             responses.append(response)
         return responses

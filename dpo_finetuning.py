@@ -12,7 +12,7 @@ from torch.nn.functional import normalize
 
 from mingpt.model import GPT
 from mingpt.trainer import Trainer
-from mingpt.reward_trainer import RewardTrainer
+from mingpt.dpo_trainer import DPOTrainer
 from mingpt.utils import set_seed, setup_logging, CfgNode as CN
 import random
 import pickle
@@ -184,35 +184,6 @@ class PairwiseDataset(Dataset):
         return x, y
 
 
-def create_comparison_dataset_ls(config):
-    file = open(config.system.work_dir+'/preference_dataset','rb')
-    sequence_length = config.data.max_length
-    data = pickle.load(file)
-    EOS_TOKEN = '</S>'
-    
-    pairs = []
-    for sample in data:
-        chosen = None
-        rejected = None
-        if sample['choice'] == 0:
-            chosen =  sample['candidate_0']
-            rejected = sample['candidate_1']
-        else:
-            chosen = sample['candidate_1']
-            rejected = sample['candidate_0']
-
-        if len(chosen) < sequence_length:
-            chosen = chosen + [EOS_TOKEN] * (sequence_length - len(chosen))
-        if len(rejected) < sequence_length:
-            rejected = rejected + [EOS_TOKEN] * (sequence_length - len(rejected))
-        pair = {
-            'chosen': chosen[:sequence_length],
-            'rejected': rejected[:sequence_length]
-        }
-        pairs.append(pair)
-    return pairs
-
-
 def od_pair_to_adjacency_matrix(od_pair_list):
     """
     Converts an od pair to an adjacency matrix.
@@ -253,6 +224,8 @@ if __name__ == '__main__':
     print(config)
     setup_logging(config)
     set_seed(config.system.seed)
+    config_ref = get_config()
+    config_ref.merge_from_args(sys.argv[1:])
 
 
     # construct the training dataset
@@ -269,13 +242,13 @@ if __name__ == '__main__':
     adj_matrix = adj_matrix.to('cuda')  
     
 
-    pairs = create_comparison_dataset_ls(config)
-    reward_dataset = PairwiseDataset(config.data, pairs, geo_ids, text)
+    #pairs = create_comparison_dataset_ls(config)
+    #reward_dataset = PairwiseDataset(config.data, pairs, geo_ids, text)
 
 
     # construct the model
-    config.model.vocab_size = reward_dataset.get_vocab_size()
-    config.model.block_size = reward_dataset.get_block_size()
+    config.model.vocab_size = train_dataset.get_vocab_size()
+    config.model.block_size = train_dataset.get_block_size()
     pretrained_model = GPT(config.model, adj_matrix = adj_matrix, reward_model=True)
     pretrained_model = pretrained_model.to('cuda')
 
@@ -283,47 +256,38 @@ if __name__ == '__main__':
     pretrained_model.load_state_dict(torch.load(ckpt_path))
     pretrained_model = pretrained_model.to(config.model.device)
 
+    config_ref.model.vocab_size = train_dataset.get_vocab_size()
+    config_ref.model.block_size = train_dataset.get_block_size()
+    reference_model = GPT(config_ref.model, adj_matrix = adj_matrix, reward_model=True)
+    reference_model = reference_model.to('cuda')
+
+    ckpt_path = os.path.join(config.system.work_dir, "model.pt")
+    reference_model.load_state_dict(torch.load(ckpt_path))
+    reference_model = reference_model.to(config.model.device)
+
     # split the dataset into a training and validation set
     validation_split = .2
     shuffle_dataset = True
     random_seed= 42
 
-    # Creating data indices for training and validation splits:
-
-    dataset_size = len(reward_dataset)
-    indices = list(range(dataset_size))
-    
-    split = int(np.floor(validation_split * dataset_size))
-    if shuffle_dataset :
-        np.random.seed(random_seed)
-        np.random.shuffle(indices)
-    train_indices, val_indices = indices[split:], indices[:split]
-
-    # Creating PT data samplers and loaders:
-    train_sampler = SubsetRandomSampler(train_indices)
-    valid_sampler = SubsetRandomSampler(val_indices)
-
+    # Load dataset
+    reward_dataset = torch.load(os.path.join(config.system.work_dir, 'dpo_preference_dataset.pt'))
     # construct the trainer object    
-    trainer = RewardTrainer(config.trainer, pretrained_model, reward_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
+    trainer = DPOTrainer(config=config.trainer, model=pretrained_model, reference_model=reference_model, train_dataset=reward_dataset)
 
 
     # iteration callback
     def batch_end_callback(trainer):
 
         if trainer.iter_num % 10 == 0:
-            print(f"iter_dt {trainer.iter_dt * 1000:.2f}ms; iter {trainer.iter_num}: train loss {trainer.loss.item():.5f}")
+            print(f"iter_dt {trainer.iter_dt * 1000:.2f}ms; iter {trainer.iter_num}: train loss {trainer.loss.item():.5f}; chosen reward {trainer.chosen_reward.item():.5f}; rejected reward {trainer.rejected_reward.item():.5f}")
         if trainer.iter_num % 250 == 0:
-            ckpt_path = os.path.join(config.system.work_dir, "fine_tuned_model.pt")
+            ckpt_path = os.path.join(config.system.work_dir, "dpo_fine_tuned_model.pt")
             torch.save(pretrained_model.state_dict(), ckpt_path)
             pretrained_model.train()
 
-    if model_load == True:
-        ckpt_path = os.path.join(config.system.work_dir, "fine_tuned_model.pt")
-        pretrained_model.load_state_dict(torch.load(ckpt_path))
-        pretrained_model = pretrained_model.to(config.model.device)
-    else:
-        trainer.set_callback('on_batch_end', batch_end_callback)
-        trainer.run()
+    trainer.set_callback('on_batch_end', batch_end_callback)
+    trainer.run()
     
     #pretrained_model.reward_model=False
     syntehtic_links=[]
@@ -341,5 +305,5 @@ if __name__ == '__main__':
         
         syntehtic_links.append(d)
     
-    file = open(config.system.work_dir+'/test_SF_trajectories.txt','wb')
+    file = open(config.system.work_dir+'/test_DPO_trajectories.txt','wb')
     pickle.dump(syntehtic_links,file)

@@ -232,9 +232,9 @@ if __name__ == '__main__':
         length_test.append(length)
 
     total_steps = (config.policy.num_rollouts//config.policy.batch_size)*config.policy.ppo_epochs*config.policy.epochs
-    tbar = tqdm(initial=0, total=total_steps)
+    tbar = tqdm(initial=0, total=config.policy.epochs)
     all_scores = []
-    
+    best_score = 0
     for i in range(config.policy.epochs):
         
         # filling in the storage (phase 1)
@@ -250,12 +250,13 @@ if __name__ == '__main__':
                 loss.backward()
                 opt.step()
                 opt.zero_grad()
-                tbar.update()
+        tbar.update()
         all_scores.append(score)
         tbar.set_description(f"| score: {score:.3f} |")
-
-        print("iter: ", i)
-        ckpt_path = os.path.join(config.system.work_dir, "model_RL.pt")
-        torch.save(model.model.state_dict(), ckpt_path)
+        if score > best_score:
+            best_score = score
+            ckpt_path = os.path.join(config.system.work_dir, "model_RL.pt")
+            torch.save(model.model.state_dict(), ckpt_path)
+            print("Best model saved")
     
     
