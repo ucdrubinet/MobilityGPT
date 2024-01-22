@@ -143,8 +143,8 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 
 
     # Add two new rows of ones and columns at the end of adjacency matrix.
-    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(2, adjacency_matrix.size(0))), 0)
-    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(adjacency_matrix.size(0), 2)), 1)
+    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(1, adjacency_matrix.size(0))), 0)
+    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(adjacency_matrix.size(0), 1)), 1)
 
     # Return the adjacency matrix.
     return adjacency_matrix

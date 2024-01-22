@@ -31,7 +31,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0121_278_128'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0121_278_300'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -56,7 +56,7 @@ class CharDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 128
+        C.block_size = 300
         C.max_length = 278
         return C
 
@@ -137,8 +137,8 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 
 
     # Add two new rows of ones and columns at the end of adjacency matrix.
-    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(2, adjacency_matrix.size(0))), 0)
-    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(adjacency_matrix.size(0), 2)), 1)
+    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(1, adjacency_matrix.size(0))), 0)
+    adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(adjacency_matrix.size(0), 1)), 1)
 
     # Return the adjacency matrix.
     return adjacency_matrix
@@ -148,7 +148,7 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 if __name__ == '__main__':
     
     
-    model_load = True
+    model_load = False
     num_samples = int(5e3)
     prompt_size = 4
     create_RL_dataset = False
