@@ -85,7 +85,7 @@ class PromptDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 512
+        C.block_size = 300
         C.max_length = 278
         return C
 
@@ -93,10 +93,10 @@ class PromptDataset(Dataset):
 
         self.config = config
         self.EOS_TOKEN = '</S>'
-        self.BOS_TOKEN = '<S>'
+        # self.BOS_TOKEN = '<S>'
         
         lines = data.strip().split('\n\n') 
-        line_words = [[self.BOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
+        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
         words = [item for sublist in line_words for item in sublist]
         data_size, vocab_size = len(words), len(vocab)
         print('data has %d characters, %d unique.' % (data_size, vocab_size))
@@ -104,13 +104,9 @@ class PromptDataset(Dataset):
         self.stoi = { ch:i for i,ch in enumerate(vocab) }
         self.itos = { i:ch for i,ch in enumerate(vocab) }
         
-        self.stoi[self.BOS_TOKEN] = len(vocab)
-        self.itos[len(vocab)] = self.BOS_TOKEN
-        
-        self.stoi[self.EOS_TOKEN] = len(vocab)+1
-        self.itos[len(vocab)+1] = self.EOS_TOKEN
-        self.vocab_size = vocab_size + 2 
-
+        self.stoi[self.EOS_TOKEN] = len(vocab)
+        self.itos[len(vocab)] = self.EOS_TOKEN
+        self.vocab_size = vocab_size + 1 
         
         all_input_ids = [[self.stoi[s] for s in traj] for traj in line_words]
         self.prompts_input_ids = np.array([item[:prompt_size] for item in all_input_ids if len(item)>prompt_size])

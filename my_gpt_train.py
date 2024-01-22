@@ -31,7 +31,7 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0118_278_300'
+    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0121_278_128'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -56,17 +56,17 @@ class CharDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 300
+        C.block_size = 128
         C.max_length = 278
         return C
 
     def __init__(self, config, data, vocab):
         self.config = config
         self.EOS_TOKEN = '</S>'
-        self.BOS_TOKEN = '<S>'
+        # self.BOS_TOKEN = '<S>'
         
         lines = data.strip().split('\n\n') 
-        line_words = [[self.BOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
+        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
         words = [item for sublist in line_words for item in sublist]
         origins = [s[1] for s in line_words]
         # vocab=list(set(words))
@@ -77,13 +77,13 @@ class CharDataset(Dataset):
         self.stoi = { ch:i for i,ch in enumerate(vocab) }
         self.itos = { i:ch for i,ch in enumerate(vocab) }
         
-        self.stoi[self.BOS_TOKEN] = len(vocab)
-        self.itos[len(vocab)] = self.BOS_TOKEN
+        self.stoi[self.EOS_TOKEN] = len(vocab)
+        self.itos[len(vocab)] = self.EOS_TOKEN
+        self.vocab_size = vocab_size + 1 
         
-        self.stoi[self.EOS_TOKEN] = len(vocab)+1
-        self.itos[len(vocab)+1] = self.EOS_TOKEN
+        # self.stoi[self.EOS_TOKEN] = len(vocab)+1
+        # self.itos[len(vocab)+1] = self.EOS_TOKEN
         
-        self.vocab_size = vocab_size + 2 
         self.num_trajs = len(lines)
         self.data = words
         self.trajs = line_words
@@ -246,11 +246,11 @@ if __name__ == '__main__':
                 # sample from the model...
                 # context = random.sample(train_dataset.data,1)
                 origin = random.sample(train_dataset.origins,1)[0]
-                context = [train_dataset.BOS_TOKEN, origin]
+                context = [train_dataset.EOS_TOKEN, origin]
 
                 x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
                 # y = model.generate(x, 500, temperature=1.0, do_sample=True, top_k=None, adj_matrix=adj_matrix)[0]
-                y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None, max_token=500)[0]
+                y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None, max_token=500)[0]
                 completion = ','.join([train_dataset.itos[int(i)] for i in y])
                 # print(completion)
             # save the latest model
@@ -279,12 +279,12 @@ if __name__ == '__main__':
         for i in tqdm(range(num_samples)):
             # context = random.sample(train_dataset.data,1)
             origin = random.sample(train_dataset.origins,1)[0]
-            context = [train_dataset.BOS_TOKEN, origin]
+            context = [train_dataset.EOS_TOKEN, origin]
             x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
-            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, max_token = config.data.max_length, temperature=1.0, do_sample=True, top_k=None)[0]
+            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, max_token = config.data.max_length, temperature=1.0, do_sample=True, top_k=None)[0]
             d = []
             for i in y[1:]:
-                if train_dataset.itos[int(i)]==train_dataset.EOS_TOKEN or train_dataset.itos[int(i)]==train_dataset.BOS_TOKEN:
+                if train_dataset.itos[int(i)]==train_dataset.EOS_TOKEN:
                     break
                 else:
                     d.append(int(train_dataset.itos[int(i)]))
@@ -304,11 +304,11 @@ if __name__ == '__main__':
             x = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], dtype=torch.long)[None,...].to('cuda')        
             traj_length = porto_geo[porto_geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
     
-            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_0 = [train_dataset.itos[int(i)] for i in y]                
             length_0 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
     
-            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_1 = [train_dataset.itos[int(i)] for i in y]   
             length_1 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
             
@@ -329,11 +329,11 @@ if __name__ == '__main__':
             x = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], dtype=torch.long)[None,...].to('cuda')        
             traj_length = porto_geo[porto_geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
     
-            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_0 = [train_dataset.itos[int(i)] for i in y]                
             length_0 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
     
-            y = model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_1 = [train_dataset.itos[int(i)] for i in y]   
             length_1 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
             

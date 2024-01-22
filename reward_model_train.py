@@ -55,34 +55,34 @@ class PairwiseDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 128
-        C.max_length = 100
+        C.block_size = 300
+        C.max_length = 278
         return C
 
     def __init__(self, config, pairs, vocab, data):
         
         self.config = config
         self.EOS_TOKEN = '</S>'
-        self.BOS_TOKEN = '<S>'
+        # self.BOS_TOKEN = '<S>'
         
         lines = data.strip().split('\n\n') 
-        line_words = [[self.BOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
+        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
         words = [item for sublist in line_words for item in sublist]
         origins = [s[1] for s in line_words]
         # vocab=list(set(words))
         # chars = sorted(list(set(data)))
         data_size, vocab_size = len(words), len(vocab)
         print('data has %d characters, %d unique.' % (data_size, vocab_size))
-    
-        
+
         self.stoi = { ch:i for i,ch in enumerate(vocab) }
         self.itos = { i:ch for i,ch in enumerate(vocab) }
-
-        self.stoi[self.BOS_TOKEN] = len(vocab)
-        self.itos[len(vocab)] = self.BOS_TOKEN
         
-        self.stoi[self.EOS_TOKEN] = len(vocab)+1
-        self.itos[len(vocab)+1] = self.EOS_TOKEN        
+        self.stoi[self.EOS_TOKEN] = len(vocab)
+        self.itos[len(vocab)] = self.EOS_TOKEN
+        self.vocab_size = vocab_size + 1 
+
+        # self.stoi[self.EOS_TOKEN] = len(vocab)+1
+        # self.itos[len(vocab)+1] = self.EOS_TOKEN      
         
         self.chosen_input_ids = []
         self.rejected_input_ids = []
@@ -95,7 +95,6 @@ class PairwiseDataset(Dataset):
             self.chosen_input_ids.append(chosen_ids)
             self.rejected_input_ids.append(rejected_ids)
 
-        self.vocab_size = vocab_size + 2 
         self.num_trajs = len(lines)
         self.data = words
         self.trajs = line_words

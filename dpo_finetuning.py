@@ -65,10 +65,10 @@ class CharDataset(Dataset):
     def __init__(self, config, data, vocab):
         self.config = config
         self.EOS_TOKEN = '</S>'
-        self.BOS_TOKEN = '<S>'
+        # self.BOS_TOKEN = '<S>'
         
         lines = data.strip().split('\n\n') 
-        line_words = [[self.BOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
+        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
         words = [item for sublist in line_words for item in sublist]
         origins = [s[1] for s in line_words]
         # vocab=list(set(words))
@@ -79,13 +79,13 @@ class CharDataset(Dataset):
         self.stoi = { ch:i for i,ch in enumerate(vocab) }
         self.itos = { i:ch for i,ch in enumerate(vocab) }
         
-        self.stoi[self.BOS_TOKEN] = len(vocab)
-        self.itos[len(vocab)] = self.BOS_TOKEN
+        self.stoi[self.EOS_TOKEN] = len(vocab)
+        self.itos[len(vocab)] = self.EOS_TOKEN
+        self.vocab_size = vocab_size + 1 
         
-        self.stoi[self.EOS_TOKEN] = len(vocab)+1
-        self.itos[len(vocab)+1] = self.EOS_TOKEN
+        # self.stoi[self.EOS_TOKEN] = len(vocab)+1
+        # self.itos[len(vocab)+1] = self.EOS_TOKEN
         
-        self.vocab_size = vocab_size + 2 
         self.num_trajs = len(lines)
         self.data = words
         self.trajs = line_words
@@ -130,26 +130,26 @@ class PairwiseDataset(Dataset):
         
         self.config = config
         self.EOS_TOKEN = '</S>'
-        self.BOS_TOKEN = '<S>'
+        # self.BOS_TOKEN = '<S>'
         
         lines = data.strip().split('\n\n') 
-        line_words = [[self.BOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
+        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
         words = [item for sublist in line_words for item in sublist]
         origins = [s[1] for s in line_words]
         # vocab=list(set(words))
         # chars = sorted(list(set(data)))
         data_size, vocab_size = len(words), len(vocab)
         print('data has %d characters, %d unique.' % (data_size, vocab_size))
-    
-        
+
         self.stoi = { ch:i for i,ch in enumerate(vocab) }
         self.itos = { i:ch for i,ch in enumerate(vocab) }
-
-        self.stoi[self.BOS_TOKEN] = len(vocab)
-        self.itos[len(vocab)] = self.BOS_TOKEN
         
-        self.stoi[self.EOS_TOKEN] = len(vocab)+1
-        self.itos[len(vocab)+1] = self.EOS_TOKEN        
+        self.stoi[self.EOS_TOKEN] = len(vocab)
+        self.itos[len(vocab)] = self.EOS_TOKEN
+        self.vocab_size = vocab_size + 1 
+
+        # self.stoi[self.EOS_TOKEN] = len(vocab)+1
+        # self.itos[len(vocab)+1] = self.EOS_TOKEN       
         
         self.chosen_input_ids = []
         self.rejected_input_ids = []
@@ -162,7 +162,6 @@ class PairwiseDataset(Dataset):
             self.chosen_input_ids.append(chosen_ids)
             self.rejected_input_ids.append(rejected_ids)
 
-        self.vocab_size = vocab_size + 2 
         self.num_trajs = len(lines)
         self.data = words
         self.trajs = line_words
@@ -293,12 +292,12 @@ if __name__ == '__main__':
     syntehtic_links=[]
     for i in tqdm(range(num_samples)):
         origin = random.sample(train_dataset.origins,1)[0]
-        context = [train_dataset.BOS_TOKEN, origin]
+        context = [train_dataset.EOS_TOKEN, origin]
         x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
-        y = pretrained_model.generate_test(x, train_dataset.itos, train_dataset.BOS_TOKEN, train_dataset.EOS_TOKEN, max_token = config.data.max_length, temperature=1.0, do_sample=True, top_k=None)[0]
+        y = pretrained_model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, max_token = config.data.max_length, temperature=1.0, do_sample=True, top_k=None)[0]
         d = []
         for i in y[1:]:
-            if train_dataset.itos[int(i)]==train_dataset.EOS_TOKEN or train_dataset.itos[int(i)]==train_dataset.BOS_TOKEN:
+            if train_dataset.itos[int(i)]==train_dataset.EOS_TOKEN:
                 break
             else:
                 d.append(int(train_dataset.itos[int(i)]))

@@ -360,7 +360,7 @@ class GPT(nn.Module):
         return idx
 
     @torch.no_grad()
-    def generate_test(self, idx, itos=None, beg_token=None, end_token=None, temperature=1.0, do_sample=False, top_k=None, max_token=None):
+    def generate_test(self, idx, itos=None, end_token=None, temperature=1.0, do_sample=False, top_k=None, max_token=None):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
@@ -392,7 +392,7 @@ class GPT(nn.Module):
             else:
                 _, idx_next = torch.topk(probs, k=1, dim=-1)
             # append sampled index to the running sequence and continue
-            if itos[idx_next.item()] == end_token or itos[idx_next.item()] == beg_token  or idx.shape[1]==max_token:
+            if itos[idx_next.item()] == end_token  or idx.shape[1]==max_token:
                 break
 
             idx = torch.cat((idx, idx_next), dim=1)
