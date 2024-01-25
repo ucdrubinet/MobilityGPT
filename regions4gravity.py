@@ -7,6 +7,7 @@ import pyproj
 from shapely.ops import transform
 from functools import partial
 import geopy.distance
+import pickle
 
 def convert_gps_to_2d_grid(gps_locations, lines, distance):
     """Converts GPS locations to 2D grids.
@@ -97,6 +98,9 @@ gps=[lats, lons]
 
 regions, region_links, links_region = convert_gps_to_2d_grid(gps, coords, 1000)
 
+file = open('Porto-Taxi/regions','wb')
+pickle.dump([regions, region_links, links_region],file)
+
 df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train.csv')
 regions_count=np.zeros((2, len(regions)))
 for idx, traj in df_porto.iterrows():
@@ -104,7 +108,7 @@ for idx, traj in df_porto.iterrows():
     for r in range(len(regions)):
         if links[0] in region_links[r]:
             regions_count[0][r]+=1
-        if links[1] in region_links[r]:
+        if links[-1] in region_links[r]:
             regions_count[1][r]+=1
             
 regions_count=regions_count.sum(axis=0, keepdims=True)
