@@ -7,6 +7,7 @@ import numpy as np
 from shapely.geometry import LineString, Point
 import osmnx as ox
 import geopy.distance
+from collections import Counter
 
 crs = {'init': 'epsg:4326'} 
 
@@ -53,7 +54,8 @@ def save_to_gdp(data, name):
     
     geometry=[]
     for x in coordinates:
-        geometry.append(LineString([Point(pair) for pair in zip(x[::2], x[1::2])]))
+        # geometry.append(LineString([Point(pair) for pair in zip(x[::2], x[1::2])]))
+        geometry.append(Point([x[-2], x[-1]]))
     df['geometry'] = geometry
     
     df=df[['geo_id', 'coordinates', 'length', 'geometry']]
@@ -94,6 +96,38 @@ def calculate_gravity(trajs):
         
     return gravity_traj
 
+def query_error(links_test, links_synth, edges):
+
+    sample_edges = edges.sample(500).geo_id.values
+    links_test_commom = list(set(links_test).intersection(sample_edges))
+    links_synth_commom = list(set(links_synth).intersection(sample_edges))
+
+    links_sample=edges.loc[edges.geo_id.isin(links_test_commom)]        
+    links_sample_synth=edges.loc[edges.geo_id.isin(links_synth_commom)]       
+    all_osmids=list(set(links_test+links_synth))        
+    
+    s_b=0.01*(5000)
+
+    link_counts_test = Counter(links_test)
+    link_counts_synth = Counter(links_synth)
+   
+    # Average Query Error
+    qe_all=[]
+    for l_id in all_osmids:
+        link=links_sample[links_sample.geo_id.isin([l_id])]
+        link_synth=links_sample_synth[links_sample_synth.geo_id.isin([l_id])]
+        if len(link)==1 and len(link_synth)==1:
+            qe=abs(link_counts_test[link.geo_id.iloc[0]]-link_counts_synth[link_synth.geo_id.iloc[0]])/max(link_counts_test[link.geo_id.iloc[0]], s_b)
+            qe_all.append(qe)
+        elif len(link)==1 and len(link_synth)==0:
+            qe=abs(link_counts_test[link.geo_id.iloc[0]])/max(link_counts_test[link.geo_id.iloc[0]], s_b)
+            qe_all.append(qe)
+        elif len(link)==0 and len(link_synth)==1:
+            qe=(link_counts_synth[link_synth.geo_id.iloc[0]])/s_b
+            qe_all.append(qe)  
+    
+    return np.mean(qe_all)
+
 
 porto_geo=pd.read_csv('Porto-Taxi/porto.geo')
 
@@ -105,15 +139,18 @@ samples.to_csv('Porto-Taxi/Porto_Taxi_trajectory_sample.csv')
 
 links_str=samples.rid_list.values.tolist()
 links_test = [list(map(int, traj.split(','))) for traj in links_str]
-
-links_test_all = list(set([e for traj in links_str for e in list(map(int, traj.split(',')))]))
-save_to_gdp(links_test_all, 'test_map')
+links_test_4count = [e for traj in links_str for e in list(map(int, traj.split(',')))]
+links_test_all = list(set(links_test_4count))
+save_to_gdp(links_test_all, 'test_map_point')
 
 
 file = open('./TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0117/test_trajectories.txt', 'rb')
 links_synth = pickle.load(file)
-links_synth_all = list(set([ e for traj in links_synth for e in traj]))
-save_to_gdp(links_synth_all, 'MobilityGPT_map')
+links_synth_4count = [ e for traj in links_synth for e in traj]
+links_synth_all = list(set(links_synth_4count))
+save_to_gdp(links_synth_all, 'MobilityGPT_map_point')
+
+av_qe = query_error(links_test_4count, links_synth_4count, porto_geo)
 
 OD_synth=[]
 length_synth=[]
@@ -188,7 +225,12 @@ js_gravity=distance.jensenshannon(gravity_synth_dist, gravity_test_dist)
 print('JS value for gravity: ',js_gravity)
 
 
+links_commom = list(set(links_test_all).intersection(links_synth_all))
+percentage_of_coverage = len(links_commom)/len(links_test_all)
+print('Normalized coverage area with respect to test set: ', percentage_of_coverage)
 
+
+print('Average query error: ',av_qe)
 # js_rad=distance.jensenshannon(per_synth_dist, per_test_dist)
 # print('JS value for repeatitions: ',js_rad)
     
