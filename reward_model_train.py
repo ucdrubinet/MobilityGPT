@@ -10,10 +10,10 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.nn.functional import normalize
 
-from mingpt.model import GPT
-from mingpt.trainer import Trainer
-from mingpt.reward_trainer import RewardTrainer
-from mingpt.utils import set_seed, setup_logging, CfgNode as CN
+from mobilitygpt.model import GPT
+from mobilitygpt.trainer import Trainer
+from mobilitygpt.reward_trainer import RewardTrainer
+from mobilitygpt.utils import set_seed, setup_logging, CfgNode as CN
 import random
 import pickle
 import json

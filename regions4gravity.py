@@ -8,6 +8,30 @@ from shapely.ops import transform
 from functools import partial
 import geopy.distance
 import pickle
+from math import radians, sin, cos, sqrt, atan2
+
+
+def haversine_distance(coord1, coord2):
+    # Radius of the Earth in meters
+    earth_radius = 6371000.0
+    
+    # Convert latitude and longitude from degrees to radians
+    lat1, lon1 = map(radians, coord1)
+    lat2, lon2 = map(radians, coord2)
+    
+    # Differences in coordinates
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    
+    # Haversine formula
+    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    
+    # Calculate distance
+    distance = earth_radius * c
+    
+    return distance
+
 
 def convert_gps_to_2d_grid(gps_locations, lines, distance):
     """Converts GPS locations to 2D grids.
@@ -26,20 +50,25 @@ def convert_gps_to_2d_grid(gps_locations, lines, distance):
     min_longitude = min(gps_locations[0])
     max_longitude = max(gps_locations[0])
     
+    length1 = haversine_distance((min_latitude, min_longitude), (max_latitude, min_longitude))
+    length2 = haversine_distance((min_latitude, min_longitude), (min_latitude, max_longitude))
 
-    line1 = LineString([(min_longitude, min_latitude), (min_longitude, max_latitude)])
-    line2 = LineString([(min_longitude, min_latitude), (max_longitude, min_latitude)])
+    grid_lat= int(length1//distance)
+    grid_lon= int(length2//distance)
+
+    # line1 = LineString([(min_longitude, min_latitude), (min_longitude, max_latitude)])
+    # line2 = LineString([(min_longitude, min_latitude), (max_longitude, min_latitude)])
     
-    # Geometry transform function based on pyproj.transform
-    project = partial(
-        pyproj.transform,
-        pyproj.Proj('EPSG:4326'),
-        pyproj.Proj('EPSG:32633'))
+    # # Geometry transform function based on pyproj.transform
+    # project = partial(
+    #     pyproj.transform,
+    #     # pyproj.Proj('EPSG:4236'),
+    #     pyproj.Proj('EPSG:3857'),
+    #     pyproj.Proj('EPSG:32633'))
     
-    line_lat = transform(project, line1)
-    line_lon = transform(project, line2)
-    grid_lat= int(line_lat.length//distance)
-    grid_lon= int(line_lon.length//distance)
+    # line_lat = transform(project, line1)
+    # line_lon = transform(project, line2)
+
       
     # Create a 2D grid of coordinates.
     grid_coordinates = [np.linspace(min_latitude, max_latitude, grid_lat), np.linspace(min_longitude, max_longitude, grid_lon)]
@@ -84,11 +113,14 @@ def convert_gps_to_2d_grid(gps_locations, lines, distance):
     
     return gdf, region_links, links_region
 
-porto_geo=pd.read_csv('./Porto-Taxi/porto.geo')   
+dataset='BJ'
+geo_data=pd.read_csv('./'+dataset+'-Taxi/roadmap.geo')   
+
+    
 lats = []
 lons = []
 coords = []
-for ind, geo in porto_geo.iterrows():
+for ind, geo in geo_data.iterrows():
     coordinate = list(map(float, geo['coordinates'].replace('[', '').replace(']', '').split(',')))
     coords.append(LineString([[coordinate[i], coordinate[i+1]] for i in range(0, len(coordinate), 2)]))
     lats.append(coordinate[0])
@@ -98,12 +130,13 @@ gps=[lats, lons]
 
 regions, region_links, links_region = convert_gps_to_2d_grid(gps, coords, 1000)
 
-file = open('Porto-Taxi/regions','wb')
+file = open(dataset+'-Taxi/regions','wb')
+df_data=pd.read_csv(dataset+'-Taxi/'+dataset+'_Taxi_trajectory_train.csv')
+
 pickle.dump([regions, region_links, links_region],file)
 
-df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train.csv')
 regions_count=np.zeros((2, len(regions)))
-for idx, traj in df_porto.iterrows():
+for idx, traj in df_data.iterrows():
     links = list(map(int, traj.rid_list.split(',')))
     for r in range(len(regions)):
         if links[0] in region_links[r]:
@@ -120,17 +153,15 @@ for r1 in range(len(regions)):
         if dist!=0:
             gravity[r1, r2]=regions_count[0, r1]*regions_count[0, r2]/(dist**2)
             
-# np.save('Porto-Taxi/gravity_1000.npy', gravity)   
-
 gravity_traj = [] 
-for idx, traj in df_porto.iterrows():
+for idx, traj in df_data.iterrows():
     links = list(map(int, traj.rid_list.split(',')))
     r_o = links_region[links[0]]
     r_d = links_region[links[-1]]
     gravity_traj.append(gravity[r_o, r_d])
+df_data['gravity'] = gravity_traj
 
-df_porto['gravity'] = gravity_traj
+df_data.to_csv(dataset+'-Taxi/'+dataset+'_Taxi_trajectory_train_w_gravity.csv')
 
-df_porto.to_csv('Porto-Taxi/Porto_Taxi_trajectory_train_w_gravity.csv')
 
     

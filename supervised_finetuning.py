@@ -10,10 +10,10 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.nn.functional import normalize
 
-from mingpt.model import GPT
-from mingpt.trainer import Trainer
-from mingpt.reward_trainer import RewardTrainer
-from mingpt.utils import set_seed, setup_logging, CfgNode as CN
+from mobilitygpt.model import GPT
+from mobilitygpt.trainer import Trainer
+from mobilitygpt.reward_trainer import RewardTrainer
+from mobilitygpt.utils import set_seed, setup_logging, CfgNode as CN
 import random
 import pickle
 import json
@@ -185,8 +185,9 @@ class PairwiseDataset(Dataset):
 
 def create_comparison_dataset_ls(config):
     file = open(config.system.work_dir+'/preference_dataset','rb')
-    sequence_length = config.data.max_length
     data = pickle.load(file)
+    
+    sequence_length = config.data.max_length
     EOS_TOKEN = '</S>'
     
     pairs = []

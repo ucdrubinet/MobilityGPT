@@ -4,6 +4,6 @@ __pycache__/
 .env
 .pylintrc
 *_synthetic
-Porto-Taxi/*
+*-Taxi/*
 *.txt
 TS-TrajGen_Porto.txt

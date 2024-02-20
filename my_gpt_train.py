@@ -10,9 +10,9 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.nn.functional import normalize
 
-from mingpt.model import GPT
-from mingpt.trainer import Trainer
-from mingpt.utils import set_seed, setup_logging, CfgNode as CN
+from mobilitygpt.model import GPT
+from mobilitygpt.trainer import Trainer
+from mobilitygpt.utils import set_seed, setup_logging, CfgNode as CN
 import random
 import pickle
 import pandas as pd
@@ -24,14 +24,14 @@ from tqdm import tqdm
 
 
 
-def get_config():
+def get_config(dataset):
 
     C = CN()
 
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_Porto_synthetic/chargpt_adj_gravity_sample_0121_278_300'
+    C.system.work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -56,7 +56,7 @@ class CharDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 300
+        C.block_size = 128
         C.max_length = 278
         return C
 
@@ -152,24 +152,24 @@ if __name__ == '__main__':
     num_samples = int(5e3)
     prompt_size = 4
     create_RL_dataset = False
-    create_DPO_dataset = True
-    assert create_DPO_dataset == True and create_RL_dataset == False, "Only one of the two datasets can be created at a time"
+    create_DPO_dataset = False
+    dataset = "BJ"
+    # assert create_DPO_dataset == True and create_RL_dataset == False, "Only one of the two datasets can be created at a time"
     
     # get default config and overrides from the command line, if any
-    config = get_config()
+    config = get_config(dataset)
     config.merge_from_args(sys.argv[1:])
     print(config)
     setup_logging(config)
     set_seed(config.system.seed)
 
     # construct the training dataset
-    text = open('TS-TrajGen_Porto.txt', 'r').read() # don't worry we won't run out of file handles
-    porto_geo=pd.read_csv('Porto-Taxi/porto.geo')    
-    geo_ids=porto_geo['geo_id'].apply(str).tolist()    
-    
+    text = open('TS-TrajGen_'+dataset+'.txt', 'r').read() # don't worry we won't run out of file handles
+    geo=pd.read_csv(dataset+'-Taxi/roadmap.geo')    
+    geo_ids=geo['geo_id'].apply(str).tolist()    
+    gravity = pd.read_csv(dataset+'-Taxi/'+dataset+'_Taxi_trajectory_train_w_gravity.csv').gravity.values
+
     #load gravity and normalize
-    # gravity = torch.Tensor(np.load('Porto-Taxi/gravity_1000.npy')) 
-    gravity = pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train_w_gravity.csv').gravity.values
     gravity = torch.Tensor(gravity)
     
     minimum, maximum = torch.min(gravity), torch.max(gravity)    
@@ -178,9 +178,9 @@ if __name__ == '__main__':
     train_dataset = CharDataset(config.data, text, geo_ids)
 
     
-    porto_rel=pd.read_csv('Porto-Taxi/porto.rel')    
-    porto_rel['combined'] = porto_rel.apply(lambda x: list([x['origin_id'], x['destination_id']]),axis=1)
-    od_list=porto_rel['combined'].tolist()
+    rel=pd.read_csv(dataset+'-Taxi/roadmap.rel')    
+    rel['combined'] = rel.apply(lambda x: list([x['origin_id'], x['destination_id']]),axis=1)
+    od_list=rel['combined'].tolist()
     adj_matrix=od_pair_to_adjacency_matrix(od_list)
     adj_matrix = adj_matrix.to('cuda')    
 
@@ -273,6 +273,12 @@ if __name__ == '__main__':
         # run the optimization
         trainer.run()
         
+        
+    #visualize attentio
+    x, y=train_dataset[10]
+    inn = x[37:101].reshape(1,-1).to(trainer.device)
+    y = model.generate_test(inn, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None, max_token=500)[0]
+
     if (not create_RL_dataset) and (not create_DPO_dataset):    
         print('Creating synthetic trajectories')
         syntehtic_links=[]
@@ -302,15 +308,15 @@ if __name__ == '__main__':
             traj_first_n = traj[:prompt_size]
             
             x = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], dtype=torch.long)[None,...].to('cuda')        
-            traj_length = porto_geo[porto_geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
+            traj_length = geo[geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
     
             y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_0 = [train_dataset.itos[int(i)] for i in y]                
-            length_0 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
+            length_0 = geo[geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
     
             y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_1 = [train_dataset.itos[int(i)] for i in y]   
-            length_1 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
+            length_1 = geo[geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
             
             choice = np.argmin([abs(traj_length - length_0), abs(traj_length - length_1)])
             d = {'input': traj, 'candidate_0':candidate_0, 'candidate_1':candidate_1, 'choice':choice}
@@ -327,15 +333,15 @@ if __name__ == '__main__':
             traj_first_n = traj[:prompt_size]
             
             x = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], dtype=torch.long)[None,...].to('cuda')        
-            traj_length = porto_geo[porto_geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
+            traj_length = geo[geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
     
             y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_0 = [train_dataset.itos[int(i)] for i in y]                
-            length_0 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
+            length_0 = geo[geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
     
             y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_1 = [train_dataset.itos[int(i)] for i in y]   
-            length_1 = porto_geo[porto_geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
+            length_1 = geo[geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
             
             choice = np.argmin([abs(traj_length - length_0), abs(traj_length - length_1)])
             chosen_response = candidate_0 if choice==0 else candidate_1
