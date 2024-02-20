@@ -168,7 +168,7 @@ class PolicyTrainer:
         
         C.seq_length = 278
         C.batch_size = 128
-        C.lr =  0.00006
+        C.lr =  None
         C.prompt_size = 30
         C.prompt_batch_size = 128
         C.num_rollouts = 128
@@ -194,7 +194,7 @@ class PolicyTrainer:
         self.generate_kwargs = dict(
             max_token = self.prompt_dataset.config.max_length,
             itos=self.prompt_dataset.itos,
-            beg_token = self.prompt_dataset.BOS_TOKEN,
+            #beg_token = self.prompt_dataset.EOS_TOKEN,
             end_token = self.prompt_dataset.EOS_TOKEN,
             temperature=1.0,
             do_sample=False,

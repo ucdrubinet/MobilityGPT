@@ -300,20 +300,20 @@ class GPT(nn.Module):
         logits = self.lm_head(x)
 
         # crop the logits based on the adjacency matrix
-        if self.adj_matrix is not None:
+        if self.adj_matrix is not None:# and not self.reward_model:
             c_token_adj = self.adj_matrix[idx.reshape(-1,1)].reshape(idx.shape[0], idx.shape[1], -1)
             logits = logits*c_token_adj
 
         # targets=targets*c_token_adj
-        # if self.reward_model:
-        #     logits = logits[:,-1,:]
+        if self.reward_model:
+            logits = logits[:,-1,:]
         # if we are given some desired targets also calculate the loss
         loss = None
         if targets is not None:
-            if not self.reward_model:
+            #if not self.reward_model:
                 loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-            else:
-                loss = F.cross_entropy(logits[:,-1,:], targets.view(-1), ignore_index=-1)
+            #else:
+            #    loss = F.cross_entropy(logits[:,-1,:], targets.view(-1), ignore_index=-1)
 
         return logits, loss
     
