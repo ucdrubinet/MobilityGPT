@@ -153,7 +153,7 @@ if __name__ == '__main__':
     prompt_size = 4
     create_RL_dataset = False
     create_DPO_dataset = False
-    dataset = "BJ"
+    dataset = "SF"
     # assert create_DPO_dataset == True and create_RL_dataset == False, "Only one of the two datasets can be created at a time"
     
     # get default config and overrides from the command line, if any

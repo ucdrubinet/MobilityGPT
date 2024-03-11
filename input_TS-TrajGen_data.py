@@ -22,7 +22,7 @@ if split:
     train_data.to_csv('Porto-Taxi/Porto_Taxi_trajectory_train.csv')
     
     test_data = df_porto.iloc[val_indices]
-    train_data.to_csv('Porto-Taxi/Porto_Taxi_trajectory_test.csv')
+    test_data.to_csv('Porto-Taxi/Porto_Taxi_trajectory_test.csv')
     
     
     df_bj=pd.read_csv('BJ-Taxi/BJ_Taxi_201511_trajectory.csv')
@@ -39,7 +39,24 @@ if split:
     train_data.to_csv('BJ-Taxi/BJ_Taxi_trajectory_train.csv')
     
     test_data = df_bj.iloc[val_indices]
-    train_data.to_csv('BJ-Taxi/BJ_Taxi_trajectory_test.csv')
+    test_data.to_csv('BJ-Taxi/BJ_Taxi_trajectory_test.csv')
+    
+    
+    df_SF=pd.read_csv('SF-Taxi/SF_Taxi_trajectory.csv')
+    dataset_size = len(df_SF)
+    indices = list(range(dataset_size))
+    
+    split = int(np.floor(validation_split * dataset_size))
+    if shuffle_dataset :
+        np.random.seed(random_seed)
+        np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:], indices[:split]
+    
+    train_data = df_SF.iloc[train_indices]
+    train_data.to_csv('SF-Taxi/SF_Taxi_trajectory_train.csv')
+    
+    test_data = df_SF.iloc[val_indices]
+    test_data.to_csv('SF-Taxi/SF_Taxi_trajectory_test.csv')
     
 else:
     df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_train.csv')
@@ -72,3 +89,21 @@ else:
     for element in trajectories:
         fo.write(element + "\n")
     fo.close()
+
+
+    df_SF=pd.read_csv('SF-Taxi/SF_Taxi_trajectory_train.csv')
+    
+    rid_list_list=df_SF.rid_list.values.tolist()
+    
+    trajectories=[]
+    for traj in rid_list_list:
+        traj_str=''.join(traj)
+        traj_str+='\n'
+        trajectories.append(traj_str)
+        
+    fo = open("TS-TrajGen_SF.txt", "w")
+    for element in trajectories:
+        fo.write(element + "\n")
+    fo.close()    
+    
+    

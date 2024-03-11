@@ -113,7 +113,7 @@ def convert_gps_to_2d_grid(gps_locations, lines, distance):
     
     return gdf, region_links, links_region
 
-dataset='BJ'
+dataset='SF'
 geo_data=pd.read_csv('./'+dataset+'-Taxi/roadmap.geo')   
 
     
@@ -121,7 +121,7 @@ lats = []
 lons = []
 coords = []
 for ind, geo in geo_data.iterrows():
-    coordinate = list(map(float, geo['coordinates'].replace('[', '').replace(']', '').split(',')))
+    coordinate = list(map(float, geo['coordinates'].replace('[', '').replace(']', '').replace('(', '').replace(')', '').split(',')))
     coords.append(LineString([[coordinate[i], coordinate[i+1]] for i in range(0, len(coordinate), 2)]))
     lats.append(coordinate[0])
     lons.append(coordinate[1])

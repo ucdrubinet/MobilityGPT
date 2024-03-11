@@ -8,7 +8,7 @@ from collections import defaultdict
 
 import torch
 from torch.utils.data.dataloader import DataLoader
-from mingpt.utils import CfgNode as CN
+from mobilitygpt.utils import CfgNode as CN
 from scipy.spatial import distance
 import pandas as pd
 from tqdm import tqdm
