@@ -406,6 +406,8 @@ class GPT(nn.Module):
                 c_token_adj = self.adj_matrix[idx[0][-1].item()]
                 logits=logits*c_token_adj
             
+            # Ensure that the logits are very large negative numbers to have them zero probability after softmax
+            logits[logits == 0] = -1e9
 
             # apply softmax to convert logits to (normalized) probabilities
             probs = F.softmax(logits, dim=-1)

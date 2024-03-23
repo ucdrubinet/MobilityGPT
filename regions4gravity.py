@@ -113,7 +113,7 @@ def convert_gps_to_2d_grid(gps_locations, lines, distance):
     
     return gdf, region_links, links_region
 
-dataset='SF'
+dataset='BJ'
 geo_data=pd.read_csv('./'+dataset+'-Taxi/roadmap.geo')   
 
     

@@ -8,9 +8,31 @@ from shapely.geometry import LineString, Point
 import osmnx as ox
 import geopy.distance
 from collections import Counter
-import random
+import torch
 
 crs = {'init': 'epsg:4326'} 
+
+
+def od_pair_to_adjacency_matrix(od_pair_list):
+    """
+    Converts an od pair to an adjacency matrix.
+
+    Args:
+        od_pair (torch.Tensor): A tensor of od pairs, where each pair is a two-dimensional tensor of the form [source, destination].
+
+    Returns:
+        torch.Tensor: An adjacency matrix
+    """
+
+    od_pair= torch.tensor(od_pair_list)
+    # Create a sparse adjacency matrix.
+    adjacency_matrix = torch.sparse_coo_tensor(od_pair.t(), torch.ones(od_pair.size(0)))
+
+    # Convert the sparse adjacency matrix to a dense adjacency matrix.
+    adjacency_matrix = adjacency_matrix.to_dense().numpy()
+
+    # Return the adjacency matrix.
+    return adjacency_matrix
 
 def get_radius(traj):
     """
@@ -196,10 +218,31 @@ def remove_edges(path):
                 
     return removed_path
 
-dataset = 'BJ'
+def connectivity_check(links, link_pairs):
     
-work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample_0203_1/'
+    conn=0
+    for o, d in zip(links, links[1:]):
+        if d in link_pairs[o]:
+            conn+=1
+            
+    av_connectivity = conn/(len(links)-1)
+    return av_connectivity
+
+dataset = 'Porto'
+    
+work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample_0322/'
 geo=pd.read_csv(dataset+'-Taxi/roadmap.geo')
+
+
+rel=pd.read_csv(dataset+'-Taxi/roadmap.rel')    
+rel['combined'] = rel.apply(lambda x: list([x['origin_id'], x['destination_id']]),axis=1)
+od_list=rel['combined'].tolist()
+adj_matrix=od_pair_to_adjacency_matrix(od_list)
+
+connectivity={}
+for indx, row in tqdm(enumerate(adj_matrix)):
+    ones_indices = np.where(row == 1)[0]
+    connectivity[indx] = list(ones_indices)
 
 
 df_data=pd.read_csv(dataset+'-Taxi/'+dataset+'_Taxi_trajectory_test.csv')
@@ -259,9 +302,12 @@ rad_synth = []
 
 per_test = []
 per_synth = []
+
+# conn_test = []
+conn_synth = []
 for i in tqdm(range(len(links_test))):
     link_ids = links_synth[i]
-    if len(link_ids)>0:
+    if len(link_ids)>1:
         link_synth = geo[geo['geo_id'].isin(link_ids)]
         OD_synth.append(link_ids[0])
         OD_synth.append(link_ids[-1])
@@ -269,6 +315,8 @@ for i in tqdm(range(len(links_test))):
         length_synth.append(length)
         rad_synth.append(get_radius(link_synth))
         per_synth.append(float(len(set(link_ids)))/len(link_ids))
+        conn_synth.append(connectivity_check(link_ids, connectivity))
+        
 
         link_ids=links_test[i] 
         link_test = geo[geo['geo_id'].isin(link_ids)]
@@ -278,6 +326,7 @@ for i in tqdm(range(len(links_test))):
         length_test.append(length)
         rad_test.append(get_radius(link_test))
         per_test.append(float(len(set(link_ids)))/len(link_ids))
+        # conn_test.append(connectivity_check(link_ids, connectivity))
 
 
 
@@ -290,16 +339,14 @@ length_test_dist, _ = arr_to_distribution(length_test, min(length_synth+length_t
 rad_synth_dist, _ = arr_to_distribution(rad_synth, min(rad_synth+rad_test), max(rad_synth+rad_test), 300)
 rad_test_dist, _ = arr_to_distribution(rad_test, min(rad_synth+rad_test), max(rad_synth+rad_test), 300)
 
-# per_synth_dist, _ = arr_to_distribution(per_synth, min(per_synth+per_test), max(per_synth+per_test), 300)
-# per_test_dist, _ = arr_to_distribution(per_test, min(per_synth+per_test), max(per_synth+per_test), 300)
-
 link_synth_dist, _ = arr_to_distribution(links_synth_all, min(links_synth_all+links_test_all), max(links_synth_all+links_test_all), 300)
 link_test_dist, _ = arr_to_distribution(links_test_all, min(links_synth_all+links_test_all), max(links_synth_all+links_test_all), 300)
-
 
 gravity_synth_dist, _ = arr_to_distribution(gravity_synth, min(gravity_synth+gravity_test), max(gravity_synth+gravity_test), 100)
 gravity_test_dist, _ = arr_to_distribution(gravity_test, min(gravity_synth+gravity_test), max(gravity_synth+gravity_test), 100)
 
+# conn_synth_dist, _ = arr_to_distribution(conn_synth, min(conn_synth+conn_test), max(conn_synth+conn_test), 300)
+# conn_test_dist, _ = arr_to_distribution(conn_test, min(conn_synth+conn_test), max(conn_synth+conn_test), 300)
 
 js_OD=distance.jensenshannon(OD_synth_dist, OD_test_dist)
 print('JS value for OD: ',js_OD)
@@ -315,6 +362,9 @@ print('JS value for link distribution: ',js_link)
 
 js_gravity=distance.jensenshannon(gravity_synth_dist, gravity_test_dist)
 print('JS value for gravity: ',js_gravity)
+
+av_conn = len([c for c in conn_synth if c==1])/len(conn_synth)
+print('Average connectivity: ', av_conn)
 
 
 # links_commom = list(set(links_test_all).intersection(links_synth_all))
