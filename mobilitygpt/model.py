@@ -18,6 +18,97 @@ from mobilitygpt.utils import CfgNode as CN
 
 # -----------------------------------------------------------------------------
 
+class LoRALinear(nn.Linear):
+
+    def __init__(self,
+                 # nn.Linear parameters
+                 in_features: int,
+                 out_features: int,
+                 bias: bool = True,
+                 device=None,
+                 dtype=None,
+                 # LoRA parameters
+                 lora_rank: int = 0,
+                 lora_alpha: float = 0.0,
+                 lora_dropout: float = 0.0,
+                ) -> None:
+        nn.Linear.__init__(
+            self,
+            in_features=in_features,
+            out_features=out_features,
+            bias=bias,
+            device=device,
+            dtype=dtype
+        )
+
+        # LoRA stuff
+        self.has_weights_merged = False
+        if lora_rank > 0:
+            self.lora_dropout = nn.Dropout(lora_dropout)
+
+            self.lora_scaling = lora_alpha / lora_rank
+            self.lora_A = nn.Parameter(torch.empty((lora_rank, self.in_features), device=device, dtype=dtype))
+            self.lora_B = nn.Parameter(torch.empty((self.out_features, lora_rank), device=device, dtype=dtype))
+
+            self.lora_A.requires_grad = False
+            self.lora_B.requires_grad = False
+
+            self.reset_parameters()
+
+    def is_lora(self) -> bool:
+        return hasattr(self, 'lora_A')
+
+    def reset_parameters(self) -> None:
+        nn.Linear.reset_parameters(self)
+        if self.is_lora():
+            torch.nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5)) # Same as nn.Linear
+            torch.nn.init.zeros_(self.lora_B)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        x = nn.Linear.forward(self, input)
+        if not self.has_weights_merged and self.is_lora():
+            # h = Wx + BAx * scaling
+            x += self.lora_scaling * F.linear(
+                F.linear(
+                    self.lora_dropout(input),
+                    self.lora_A
+                ),
+                self.lora_B
+            )
+        return x
+
+    def extra_repr(self) -> str:
+        out = nn.Linear.extra_repr(self)
+        if self.is_lora():
+            out += f', lora_rank={self.lora_A.shape[0]}, lora_scaling={self.lora_scaling}, lora_dropout={self.lora_dropout.p}'
+        return out
+
+    def train(self, mode: bool = True) -> "LoRALinear":
+        nn.Linear.train(self, mode)
+        if self.has_weights_merged and self.is_lora():
+            # de-merge weights, i.e., remove BA from W = W + BA
+            self.weight.data -= self.lora_scaling * self.lora_B @ self.lora_A
+            self.has_weights_merged = False
+        return self
+
+    def eval(self) -> "LoRALinear":
+        nn.Linear.eval(self)
+        if not self.has_weights_merged and self.is_lora():
+            # merge weights, i.e., add BA to W
+            self.weight.data += self.lora_scaling * self.lora_B @ self.lora_A
+            self.has_weights_merged = True
+        return self
+
+def get_lora_model(model: nn.Module) -> nn.Module:
+    for name, param in model.named_parameters():
+        if "lora" in name:
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
+    return model
+
+
+
 class PositionalEncoding(nn.Module):
 
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
@@ -58,9 +149,28 @@ class CausalSelfAttention(nn.Module):
         super().__init__()
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
+        # self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
+        self.c_attn = LoRALinear(
+            in_features=config.n_embd,
+            out_features=3 * config.n_embd,
+            bias=config.bias,
+            lora_rank=config.lora_rank,
+            lora_alpha=config.lora_alpha,
+            lora_dropout=config.lora_dropout
+        )
+        
         # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd)
+        # self.c_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.c_proj = LoRALinear(
+            in_features=config.n_embd,
+            out_features=config.n_embd,
+            bias=config.bias,
+            lora_rank=config.lora_rank,
+            lora_alpha=config.lora_alpha,
+            lora_dropout=config.lora_dropout
+        )
+
+
         # regularization
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
@@ -132,6 +242,12 @@ class GPT(nn.Module):
         C.resid_pdrop = 0.1
         C.attn_pdrop = 0.1
         C.device = 'cuda'
+        # LoRA parameters
+        C.lora_rank: int = 0
+        C.lora_alpha: float = 0.0
+        C.lora_dropout: float = 0.0
+        C.bias: bool =  False
+
         return C
 
     def __init__(self, config, adj_matrix = None, reward_model=False):
@@ -181,7 +297,7 @@ class GPT(nn.Module):
         for pn, p in self.named_parameters():
             if pn.endswith('c_proj.weight'):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
-
+                
         # report number of parameters (note we don't count the decoder parameters in lm_head)
         n_params = sum(p.numel() for p in self.transformer.parameters())
         print("number of parameters: %.2fM" % (n_params/1e6,))
@@ -196,6 +312,7 @@ class GPT(nn.Module):
         elif isinstance(module, nn.LayerNorm):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
+                    
 
     @classmethod
     def from_pretrained(cls, model_type):
@@ -245,6 +362,10 @@ class GPT(nn.Module):
         weight decay for regularization and those that won't (biases, and layernorm/embedding weights).
         We are then returning the PyTorch optimizer object.
         """
+
+        if self.config.lora_rank > 0:
+            # No special treatment for LoRA
+            return torch.optim.AdamW(self.parameters(), lr=train_config.learning_rate, betas=train_config.betas)
 
         # separate out all parameters to those that will and won't experience regularizing weight decay
         decay = set()
@@ -303,7 +424,9 @@ class GPT(nn.Module):
         if self.adj_matrix is not None:# and not self.reward_model:
             c_token_adj = self.adj_matrix[idx.reshape(-1,1)].reshape(idx.shape[0], idx.shape[1], -1)
             logits = logits*c_token_adj
-
+            # Ensure that the logits are very large negative numbers to have them zero probability after softmax
+            logits[logits == 0] = -1e9
+            
         # targets=targets*c_token_adj
         if self.reward_model:
             logits = logits[:,-1,:]
@@ -339,49 +462,6 @@ class GPT(nn.Module):
 
         return logits, x
 
-
-    @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):
-        """
-        Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
-        the sequence max_new_tokens times, feeding the predictions back into the model each time.
-        Most likely you'll want to make sure to be in model.eval() mode of operation for this.
-        """
-                
-        # for _ in range(max_new_tokens):
-        while True:
-            # if the sequence context is growing too long we must crop it at block_size
-            idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
-            # forward the model to get the logits for the index in the sequence
-            logits, _ = self(idx_cond)
-            # pluck the logits at the final step and scale by desired temperature
-            logits = logits[:, -1, :] / temperature
-            # optionally crop the logits to only the top k options
-            if top_k is not None:
-                v, _ = torch.topk(logits, top_k)
-                logits[logits < v[:, [-1]]] = -float('Inf')
-
-            # crop the logits based on the adjacency matrix
-            if self.adj_matrix is not None:
-                c_token_adj = self.adj_matrix[idx[0][-1].item()]
-                logits=logits*c_token_adj
-        
-
-            # apply softmax to convert logits to (normalized) probabilities            
-            probs = F.softmax(logits, dim=-1)
-            # either sample from the distribution or take the most likely element
-            if do_sample:
-                idx_next = torch.multinomial(probs, num_samples=1)
-            else:
-                _, idx_next = torch.topk(probs, k=1, dim=-1)
-            # append sampled index to the running sequence and continue
-        
-            if idx.shape[1]==max_new_tokens:
-                break
-            idx = torch.cat((idx, idx_next), dim=1)
-
-        return idx
-
     @torch.no_grad()
     def generate_test(self, idx, itos=None, end_token=None, temperature=1.0, do_sample=False, top_k=None, max_token=None):
         """
@@ -405,9 +485,8 @@ class GPT(nn.Module):
             if self.adj_matrix is not None:
                 c_token_adj = self.adj_matrix[idx[0][-1].item()]
                 logits=logits*c_token_adj
-            
-            # Ensure that the logits are very large negative numbers to have them zero probability after softmax
-            logits[logits == 0] = -1e9
+                # Ensure that the logits are very large negative numbers to have them zero probability after softmax
+                logits[logits == 0] = -1e9
 
             # apply softmax to convert logits to (normalized) probabilities
             probs = F.softmax(logits, dim=-1)

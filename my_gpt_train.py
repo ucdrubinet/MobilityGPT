@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.nn.functional import normalize
 
-from mobilitygpt.model import GPT
+from mobilitygpt.model import GPT, get_lora_model
 from mobilitygpt.trainer import Trainer
 from mobilitygpt.utils import set_seed, setup_logging, CfgNode as CN
 import random
@@ -31,7 +31,7 @@ def get_config(dataset):
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample'
+    C.system.work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample_0402'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -153,7 +153,9 @@ if __name__ == '__main__':
     prompt_size = 4
     create_RL_dataset = False
     create_DPO_dataset = False
-    dataset = "SF"
+    dataset = "Porto"
+    lora = True # 'scratch' or 'finetune'
+
     # assert create_DPO_dataset == True and create_RL_dataset == False, "Only one of the two datasets can be created at a time"
     
     # get default config and overrides from the command line, if any
@@ -183,13 +185,34 @@ if __name__ == '__main__':
     od_list=rel['combined'].tolist()
     adj_matrix=od_pair_to_adjacency_matrix(od_list)
     adj_matrix = adj_matrix.to('cuda')    
-
-
-    # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
     config.model.block_size = train_dataset.get_block_size()
-    model = GPT(config.model, adj_matrix = adj_matrix)
 
+    # construct the model
+    config.model.lora_rank = 8
+    config.model.lora_alpha = 16
+    config.model.lora_dropout = 0.05
+    model = GPT(config.model, adj_matrix = adj_matrix)
+    
+    if lora:
+        ckpt_path = os.path.join(config.system.work_dir, "model.pt")
+        
+        state_dict = torch.load(ckpt_path)
+        unwanted_prefix = '_orig_mod.'
+        for k,v in list(state_dict.items()):
+            if k.startswith(unwanted_prefix):
+                state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+        
+        model.load_state_dict(torch.load(ckpt_path))
+        
+        print("Marking model as LoRA fine-tunable...")
+        model = get_lora_model(model)
+        print("Done.")
+        DP=True
+    else:
+        DP=False
+
+#%%
     # split the dataset into a training and validation set
     validation_split = .2
     shuffle_dataset = True
@@ -230,7 +253,7 @@ if __name__ == '__main__':
     valid_sampler = WeightedRandomSampler(val_gravity, len(val_gravity))
 
     # construct the trainer object    
-    trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
+    trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler, DP = DP)
 ##############
 
     # iteration callback
@@ -297,8 +320,12 @@ if __name__ == '__main__':
             
             syntehtic_links.append(d)
         
-        file = open(config.system.work_dir+'/test_trajectories.txt','wb')
-        pickle.dump(syntehtic_links,file)
+        if lora:
+            file = open(config.system.work_dir+'/test_trajectories_lora.txt','wb')
+            pickle.dump(syntehtic_links,file)
+        else:
+            file = open(config.system.work_dir+'/test_trajectories.txt','wb')
+            pickle.dump(syntehtic_links,file)
     elif create_RL_dataset:
         print('Creating RL dataset')
         preference_data=[]

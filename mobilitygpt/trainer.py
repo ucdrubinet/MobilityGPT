@@ -14,6 +14,7 @@ import pandas as pd
 from tqdm import tqdm
 import gc
 import random
+from opacus import PrivacyEngine 
 
 class Trainer:
 
@@ -33,7 +34,7 @@ class Trainer:
         C.grad_norm_clip = 1.0
         return C
 
-    def __init__(self, config, model, train_dataset, train_sampler, val_sampler):
+    def __init__(self, config, model, train_dataset, train_sampler, val_sampler, DP=False):
         self.config = config
         self.model = model
         self.optimizer = None
@@ -42,6 +43,7 @@ class Trainer:
         self.val_loss = None
         self.train_sampler = train_sampler
         self.val_sampler = val_sampler
+        self.DP = DP
 
         # determine the device we'll train on
         if config.device == 'auto':
@@ -104,11 +106,22 @@ class Trainer:
             num_workers=config.num_workers,
         )
         
+        if self.DP:
+            privacy_engine = PrivacyEngine()
+            model, self.optimizer, train_loader = privacy_engine.make_private(
+                module = model,
+                optimizer = self.optimizer,
+                data_loader = train_loader,
+                max_grad_norm = 1.0,
+                noise_multiplier = 1.0,
+                )
+            print("Training model with DP...")
+            
         # calculate statistic for test data
         df_porto=pd.read_csv('Porto-Taxi/Porto_Taxi_trajectory_test.csv')
         samples=df_porto.sample(n=self.test_num_samples)
         rid_list_list=samples.rid_list.values.tolist()
-        porto_geo=pd.read_csv('Porto-Taxi/porto.geo')
+        porto_geo=pd.read_csv('Porto-Taxi/roadmap.geo')
         OD_test=[]
         length_test=[]
         for traj in rid_list_list:
@@ -148,6 +161,10 @@ class Trainer:
             self.iter_dt = tnow - self.iter_time
             self.iter_time = tnow
 
+            # termination conditions
+            if config.max_iters is not None and self.iter_num >= config.max_iters:
+                break
+
             # # add validation
             # if self.iter_num % 100 == 0:
             #     model.eval()
@@ -164,11 +181,6 @@ class Trainer:
             #     print('LOSS train {} valid {}'.format(self.loss, self.val_loss ))
             #     model.train()
             #     self.trigger_callbacks('validation_end')
-
-            # termination conditions
-            if config.max_iters is not None and self.iter_num >= config.max_iters:
-                break
-
 
             # # add statistical testing
             # if self.iter_num % 1000 == 0:

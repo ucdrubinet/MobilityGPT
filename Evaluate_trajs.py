@@ -230,7 +230,8 @@ def connectivity_check(links, link_pairs):
 
 dataset = 'Porto'
     
-work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample_0322/'
+# work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample_0322/'
+work_dir = './TS-TrajGen_'+dataset+'_synthetic/'
 geo=pd.read_csv(dataset+'-Taxi/roadmap.geo')
 
 
@@ -256,7 +257,7 @@ links_test_4count = [e for traj in links_str for e in list(map(int, traj.split('
 links_test_all = list(set(links_test_4count))
 
 
-file = open(work_dir+'test_trajectories.txt', 'rb')
+file = open(work_dir+'test_PPO_trajectories_1e-6_T0.99.txt', 'rb')
 links_synth = pickle.load(file)
 # links_synth = [remove_edges(l) for l in links_synth]
 links_synth_4count = [ e for traj in links_synth for e in traj]
@@ -264,14 +265,14 @@ links_synth_all = list(set(links_synth_4count))
 
 save_to_gdp(links_test_4count, work_dir,'test_map')
 save_to_gdp(links_synth_4count, work_dir, 'MobilityGPT_map')
-
+#%%
 plot_gravity_map(links_test, work_dir, 'test', dataset)
 plot_gravity_map(links_synth, work_dir, 'synth', dataset)
 
 gravity_test = calculate_gravity(links_test, dataset)
 gravity_synth = calculate_gravity(links_synth, dataset)
 
-#%%
+
 
 # # origin_id = get_popular_origin(links_test)
 # origin_id = 20
