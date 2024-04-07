@@ -427,16 +427,13 @@ class GPT(nn.Module):
             # Ensure that the logits are very large negative numbers to have them zero probability after softmax
             logits[logits == 0] = -1e9
             
-        # targets=targets*c_token_adj
         if self.reward_model:
             logits = logits[:,-1,:]
         # if we are given some desired targets also calculate the loss
         loss = None
         if targets is not None:
-            #if not self.reward_model:
-                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-            #else:
-            #    loss = F.cross_entropy(logits[:,-1,:], targets.view(-1), ignore_index=-1)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+
 
         return logits, loss
     

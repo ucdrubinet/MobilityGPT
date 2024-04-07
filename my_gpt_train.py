@@ -31,7 +31,7 @@ def get_config(dataset):
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample_0402'
+    C.system.work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_random_0407'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -56,7 +56,7 @@ class CharDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 128
+        C.block_size = 32
         C.max_length = 278
         return C
 
@@ -66,7 +66,7 @@ class CharDataset(Dataset):
         # self.BOS_TOKEN = '<S>'
         
         lines = data.strip().split('\n\n') 
-        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
+        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines[:10000]]
         words = [item for sublist in line_words for item in sublist]
         origins = [s[1] for s in line_words]
         # vocab=list(set(words))
@@ -100,12 +100,6 @@ class CharDataset(Dataset):
         return len(self.data) - self.config.block_size
 
     def __getitem__(self, idx):
-        # # grab a chunk of (block_size + 1) characters from the data
-        # chunk = []
-        # while len(chunk) <= self.config.block_size:
-        #     chunk += self.trajs[idx]
-        #     idx += 1
-        # chunk = chunk[:self.config.block_size + 1]
     
         chunk = self.data[idx:idx + self.config.block_size + 1]
         # encode every character to an integer
@@ -128,13 +122,15 @@ def od_pair_to_adjacency_matrix(od_pair_list):
         torch.Tensor: An adjacency matrix
     """
 
-    od_pair= torch.tensor(od_pair_list)
-    # Create a sparse adjacency matrix.
-    adjacency_matrix = torch.sparse_coo_tensor(od_pair.t(), torch.ones(od_pair.size(0)))
-
-    # Convert the sparse adjacency matrix to a dense adjacency matrix.
-    adjacency_matrix = adjacency_matrix.to_dense()
-
+    # Find the maximum index in the OD pair
+    max_index = np.max(od_pair_list)
+    
+    # Initialize the adjacency matrix with zeros
+    adjacency_matrix = torch.zeros((max_index + 1, max_index + 1), dtype=int)
+    
+    # Set the elements in the adjacency matrix based on the OD pair
+    for origin, destination in od_pair_list:
+        adjacency_matrix[origin, destination] = 1
 
     # Add two new rows of ones and columns at the end of adjacency matrix.
     adjacency_matrix = torch.cat((adjacency_matrix, torch.ones(1, adjacency_matrix.size(0))), 0)
@@ -147,15 +143,21 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 
 if __name__ == '__main__':
     
+    dataset = "Porto"
     
     model_load = False
-    num_samples = int(5e3)
-    prompt_size = 4
+    gravity_sampling = False
+    lora = False 
     create_RL_dataset = False
     create_DPO_dataset = False
-    dataset = "Porto"
-    lora = True # 'scratch' or 'finetune'
-
+    num_samples = int(5e3)
+    prompt_size = 4
+    
+    # split the dataset into a training and validation set
+    validation_split = .2
+    shuffle_dataset = True
+    random_seed= 42
+    
     # assert create_DPO_dataset == True and create_RL_dataset == False, "Only one of the two datasets can be created at a time"
     
     # get default config and overrides from the command line, if any
@@ -166,19 +168,11 @@ if __name__ == '__main__':
     set_seed(config.system.seed)
 
     # construct the training dataset
-    text = open('TS-TrajGen_'+dataset+'.txt', 'r').read() # don't worry we won't run out of file handles
+    text = open('TS-TrajGen_'+dataset+'_random.txt', 'r').read() # don't worry we won't run out of file handles
     geo=pd.read_csv(dataset+'-Taxi/roadmap.geo')    
     geo_ids=geo['geo_id'].apply(str).tolist()    
-    gravity = pd.read_csv(dataset+'-Taxi/'+dataset+'_Taxi_trajectory_train_w_gravity.csv').gravity.values
-
-    #load gravity and normalize
-    gravity = torch.Tensor(gravity)
-    
-    minimum, maximum = torch.min(gravity), torch.max(gravity)    
-    gravity  = (gravity-minimum)/(maximum-minimum) 
 
     train_dataset = CharDataset(config.data, text, geo_ids)
-
     
     rel=pd.read_csv(dataset+'-Taxi/roadmap.rel')    
     rel['combined'] = rel.apply(lambda x: list([x['origin_id'], x['destination_id']]),axis=1)
@@ -212,45 +206,44 @@ if __name__ == '__main__':
     else:
         DP=False
 
-#%%
-    # split the dataset into a training and validation set
-    validation_split = .2
-    shuffle_dataset = True
-    random_seed= 42
 
     # Creating data indices for training and validation splits:
-
-# # ##############
-#     dataset_size = len(train_dataset)
-#     indices = list(range(dataset_size))
+##############
+    if gravity_sampling:
+        gravity = pd.read_csv(dataset+'-Taxi/'+dataset+'_Taxi_trajectory_train_w_gravity.csv').gravity.values
+        #load gravity and normalize
+        gravity = torch.Tensor(gravity)
+        minimum, maximum = torch.min(gravity), torch.max(gravity)    
+        gravity  = (gravity-minimum)/(maximum-minimum) 
+        num_trajs = len(train_dataset.trajs)
+        indices = list(range(num_trajs))
+        split = int(np.floor(validation_split * num_trajs))
     
-#     split = int(np.floor(validation_split * dataset_size))
-#     if shuffle_dataset :
-#         np.random.seed(random_seed)
-#         np.random.shuffle(indices)
-#     train_indices, val_indices = indices[split:], indices[:split]
-
-#     # Creating PT data samplers and loaders:
-#     train_sampler = SubsetRandomSampler(train_indices)
-#     valid_sampler = SubsetRandomSampler(val_indices)
-
-#     # construct the trainer object    
-#     trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)
-
-# ##############
-    num_trajs = len(train_dataset.trajs)
-    indices = list(range(num_trajs))
-    split = int(np.floor(validation_split * num_trajs))
-
-    if shuffle_dataset :
-        np.random.seed(random_seed)
-        np.random.shuffle(indices)
-    train_indices, val_indices = indices[split:], indices[:split]
-
-    train_gravity, val_gravity= gravity[train_indices], gravity[val_indices]
-
-    train_sampler = WeightedRandomSampler(train_gravity, len(train_gravity))
-    valid_sampler = WeightedRandomSampler(val_gravity, len(val_gravity))
+        if shuffle_dataset :
+            np.random.seed(random_seed)
+            np.random.shuffle(indices)
+        train_indices, val_indices = indices[split:], indices[:split]
+    
+        train_gravity, val_gravity= gravity[train_indices], gravity[val_indices]
+    
+        train_sampler = WeightedRandomSampler(train_gravity, len(train_gravity))
+        valid_sampler = WeightedRandomSampler(val_gravity, len(val_gravity))
+    else:
+        dataset_size = len(train_dataset)
+        indices = list(range(dataset_size))
+        
+        split = int(np.floor(validation_split * dataset_size))
+        if shuffle_dataset :
+            np.random.seed(random_seed)
+            np.random.shuffle(indices)
+        train_indices, val_indices = indices[split:], indices[:split]
+    
+        # Creating PT data samplers and loaders:
+        train_sampler = SubsetRandomSampler(train_indices)
+        valid_sampler = SubsetRandomSampler(val_indices)
+    
+        # construct the trainer object    
+        trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)        
 
     # construct the trainer object    
     trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler, DP = DP)
@@ -263,21 +256,8 @@ if __name__ == '__main__':
             print(f"iter_dt {trainer.iter_dt * 1000:.2f}ms; iter {trainer.iter_num}: train loss {trainer.loss.item():.5f}")
 
         if trainer.iter_num % 500 == 0:
-            # evaluate both the train and test score
-            model.eval()
-            with torch.no_grad():
-                # sample from the model...
-                # context = random.sample(train_dataset.data,1)
-                origin = random.sample(train_dataset.origins,1)[0]
-                context = [train_dataset.EOS_TOKEN, origin]
-
-                x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
-                # y = model.generate(x, 500, temperature=1.0, do_sample=True, top_k=None, adj_matrix=adj_matrix)[0]
-                y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None, max_token=500)[0]
-                completion = ','.join([train_dataset.itos[int(i)] for i in y])
-                # print(completion)
-            # save the latest model
             # print("saving model")
+            model.eval()
             ckpt_path = os.path.join(config.system.work_dir, "model.pt")
             torch.save(model.state_dict(), ckpt_path)
             # revert model to training mode
@@ -297,11 +277,6 @@ if __name__ == '__main__':
         trainer.run()
         
         
-    #visualize attentio
-    x, y=train_dataset[10]
-    inn = x[37:101].reshape(1,-1).to(trainer.device)
-    y = model.generate_test(inn, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None, max_token=500)[0]
-
     if (not create_RL_dataset) and (not create_DPO_dataset):    
         print('Creating synthetic trajectories')
         syntehtic_links=[]
