@@ -131,9 +131,9 @@ gps=[lats, lons]
 regions, region_links, links_region = convert_gps_to_2d_grid(gps, coords, 1000)
 
 file = open(dataset+'-Taxi/regions','wb')
-df_data=pd.read_csv(dataset+'-Taxi/'+dataset+'_Taxi_trajectory_train.csv')
-
 pickle.dump([regions, region_links, links_region],file)
+
+df_data=pd.read_csv(dataset+'-Taxi/'+dataset+'_Taxi_trajectory_train.csv')
 
 regions_count=np.zeros((2, len(regions)))
 for idx, traj in df_data.iterrows():

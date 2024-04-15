@@ -56,8 +56,8 @@ class CharDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 32
-        C.max_length = 278
+        C.block_size = 100
+        C.max_length = 220
         return C
 
     def __init__(self, config, data, vocab):
@@ -66,7 +66,7 @@ class CharDataset(Dataset):
         # self.BOS_TOKEN = '<S>'
         
         lines = data.strip().split('\n\n') 
-        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines[:10000]]
+        line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
         words = [item for sublist in line_words for item in sublist]
         origins = [s[1] for s in line_words]
         # vocab=list(set(words))
@@ -143,10 +143,10 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 
 if __name__ == '__main__':
     
-    dataset = "Porto"
+    dataset = "SF"
     
     model_load = False
-    gravity_sampling = False
+    gravity_sampling = True
     lora = False 
     create_RL_dataset = False
     create_DPO_dataset = False
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     set_seed(config.system.seed)
 
     # construct the training dataset
-    text = open('TS-TrajGen_'+dataset+'_random.txt', 'r').read() # don't worry we won't run out of file handles
+    text = open('TS-TrajGen_'+dataset+'.txt', 'r').read() # don't worry we won't run out of file handles
     geo=pd.read_csv(dataset+'-Taxi/roadmap.geo')    
     geo_ids=geo['geo_id'].apply(str).tolist()    
 
@@ -179,16 +179,16 @@ if __name__ == '__main__':
     od_list=rel['combined'].tolist()
     adj_matrix=od_pair_to_adjacency_matrix(od_list)
     adj_matrix = adj_matrix.to('cuda')    
-    config.model.vocab_size = train_dataset.get_vocab_size()
-    config.model.block_size = train_dataset.get_block_size()
 
     # construct the model
-    config.model.lora_rank = 8
-    config.model.lora_alpha = 16
-    config.model.lora_dropout = 0.05
+    config.model.vocab_size = train_dataset.get_vocab_size()
+    config.model.block_size = train_dataset.get_block_size()
     model = GPT(config.model, adj_matrix = adj_matrix)
     
     if lora:
+        config.model.lora_rank = 8
+        config.model.lora_alpha = 16
+        config.model.lora_dropout = 0.05
         ckpt_path = os.path.join(config.system.work_dir, "model.pt")
         
         state_dict = torch.load(ckpt_path)
@@ -242,9 +242,6 @@ if __name__ == '__main__':
         train_sampler = SubsetRandomSampler(train_indices)
         valid_sampler = SubsetRandomSampler(val_indices)
     
-        # construct the trainer object    
-        trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)        
-
     # construct the trainer object    
     trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler, DP = DP)
 ##############

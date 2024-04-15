@@ -424,8 +424,7 @@ class GPT(nn.Module):
         if self.adj_matrix is not None:# and not self.reward_model:
             c_token_adj = self.adj_matrix[idx.reshape(-1,1)].reshape(idx.shape[0], idx.shape[1], -1)
             logits = logits*c_token_adj
-            # Ensure that the logits are very large negative numbers to have them zero probability after softmax
-            logits[logits == 0] = -1e9
+
             
         if self.reward_model:
             logits = logits[:,-1,:]
