@@ -31,7 +31,7 @@ def get_config(dataset):
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_random_0407'
+    C.system.work_dir = './Trajs_'+dataset+'_synthetic/chargpt_adj_random_0407'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     set_seed(config.system.seed)
 
     # construct the training dataset
-    text = open('TS-TrajGen_'+dataset+'.txt', 'r').read() # don't worry we won't run out of file handles
+    text = open('Trajs_'+dataset+'.txt', 'r').read() # don't worry we won't run out of file handles
     geo=pd.read_csv(dataset+'-Taxi/roadmap.geo')    
     geo_ids=geo['geo_id'].apply(str).tolist()    
 

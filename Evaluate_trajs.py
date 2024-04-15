@@ -230,8 +230,7 @@ def connectivity_check(links, link_pairs):
 
 dataset = 'Porto'
     
-# work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_gravity_sample_0322/'
-work_dir = './TS-TrajGen_'+dataset+'_synthetic/'
+work_dir = './Trajs_'+dataset+'_synthetic/'
 geo=pd.read_csv(dataset+'-Taxi/roadmap.geo')
 
 

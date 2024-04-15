@@ -18,8 +18,9 @@ from shapely.geometry import LineString, Point
 edges =pd.read_csv('/media/ahaydari/2TB_extra/porto_dataset/Porto-Taxi/porto.geo')
 # df_porto=pd.read_csv('/media/ahaydari/2TB_extra/porto_dataset/Porto-Taxi/Porto_Taxi_trajectory.csv')
 
-file = open('./outTS-TrajGen_Porto/chargpt/test_trajectories.txt', 'rb')
-links = pickle.load(file)
+# file = open('./outTS-TrajGen_Porto/chargpt/test_trajectories.txt', 'rb')
+links = open('TS-TrajGen_Porto_random.txt', 'r').read()
+# links = pickle.load(file)
 
 crs = {'init': 'epsg:4326'} 
 

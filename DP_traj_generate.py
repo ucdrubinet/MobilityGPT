@@ -41,7 +41,7 @@ total_elements = sum(len(values) for values in region_links.values())
 sampling_probabilities = {key: len(values) / total_elements for key, values in region_links.items()}
 
 num_trajs = int(1e6)
-fo = open("TS-TrajGen_"+dataset+"_random.txt", "w")
+fo = open("Trajs_"+dataset+"_random.txt", "w")
 for i in tqdm(range(num_trajs)):
     # Sample two keys with replacement based on their probabilities
     sampled_keys = random.choices(list(region_links.keys()), weights=list(sampling_probabilities.values()), k=2)

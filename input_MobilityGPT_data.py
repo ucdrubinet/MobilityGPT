@@ -37,7 +37,7 @@ else:
         traj_str+='\n'
         trajectories.append(traj_str)
         
-    fo = open("TS-TrajGen_"+dataset+".txt", "w")
+    fo = open(dataset+"_trajs.txt", "w")
     for element in trajectories:
         fo.write(element + "\n")
     fo.close()
