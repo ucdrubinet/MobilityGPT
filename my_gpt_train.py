@@ -31,7 +31,7 @@ def get_config(dataset):
     # system
     C.system = CN()
     C.system.seed = 128
-    C.system.work_dir = './Trajs_'+dataset+'_synthetic/chargpt_adj_random_0407'
+    C.system.work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_random_0407'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -56,8 +56,8 @@ class CharDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 100
-        C.max_length = 220
+        C.block_size = 300
+        C.max_length = 278
         return C
 
     def __init__(self, config, data, vocab):
@@ -143,11 +143,12 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 
 if __name__ == '__main__':
     
-    dataset = "SF"
+    dataset = "Porto"
     
     model_load = False
     gravity_sampling = True
-    lora = False 
+    lora = True
+    lora_training = False
     create_RL_dataset = False
     create_DPO_dataset = False
     num_samples = int(5e3)
@@ -183,27 +184,31 @@ if __name__ == '__main__':
     # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
     config.model.block_size = train_dataset.get_block_size()
-    model = GPT(config.model, adj_matrix = adj_matrix)
     
     if lora:
         config.model.lora_rank = 8
         config.model.lora_alpha = 16
         config.model.lora_dropout = 0.05
-        ckpt_path = os.path.join(config.system.work_dir, "model.pt")
+
+        model = GPT(config.model, adj_matrix = adj_matrix)
         
-        state_dict = torch.load(ckpt_path)
-        unwanted_prefix = '_orig_mod.'
-        for k,v in list(state_dict.items()):
-            if k.startswith(unwanted_prefix):
-                state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-        
-        model.load_state_dict(torch.load(ckpt_path))
-        
-        print("Marking model as LoRA fine-tunable...")
-        model = get_lora_model(model)
-        print("Done.")
+        if lora_training:
+
+            ckpt_path = os.path.join(config.system.work_dir, "model.pt")
+            
+            state_dict = torch.load(ckpt_path)
+            unwanted_prefix = '_orig_mod.'
+            for k,v in list(state_dict.items()):
+                if k.startswith(unwanted_prefix):
+                    state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+            
+            model.load_state_dict(torch.load(ckpt_path))
+            print("Marking model as LoRA fine-tunable...")
+            model = get_lora_model(model)
+            print("Done.")
         DP=True
     else:
+        model = GPT(config.model, adj_matrix = adj_matrix)
         DP=False
 
 
@@ -242,6 +247,9 @@ if __name__ == '__main__':
         train_sampler = SubsetRandomSampler(train_indices)
         valid_sampler = SubsetRandomSampler(val_indices)
     
+        # construct the trainer object    
+        trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)        
+
     # construct the trainer object    
     trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler, DP = DP)
 ##############

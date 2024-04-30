@@ -32,6 +32,9 @@ class Trainer:
         C.betas = (0.9, 0.95)
         C.weight_decay = 0.1 # only applied on matmul weights
         C.grad_norm_clip = 1.0
+        C.eps = 1.0
+        C.delta = 1e-6
+        
         return C
 
     def __init__(self, config, model, train_dataset, train_sampler, val_sampler, DP=False):
@@ -100,12 +103,14 @@ class Trainer:
 
         if self.DP:
             privacy_engine = PrivacyEngine()
-            model, self.optimizer, train_loader = privacy_engine.make_private(
+            model, self.optimizer, train_loader = privacy_engine.make_private_with_epsilon(
                 module = model,
                 optimizer = self.optimizer,
                 data_loader = train_loader,
-                max_grad_norm = 1.0,
-                noise_multiplier = 1.0,
+                epochs = config.max_iters,
+                target_epsilon = config.eps,
+                target_delta = config.delta,
+                max_grad_norm = config.grad_norm_clip,
                 )
             print("Training model with DP...")
 
