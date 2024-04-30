@@ -148,6 +148,7 @@ if __name__ == '__main__':
     model_load = False
     gravity_sampling = True
     lora = True
+    random_trajs = True
     lora_training = False
     create_RL_dataset = False
     create_DPO_dataset = False
@@ -169,7 +170,11 @@ if __name__ == '__main__':
     set_seed(config.system.seed)
 
     # construct the training dataset
-    text = open('Trajs_'+dataset+'.txt', 'r').read() # don't worry we won't run out of file handles
+    if random_trajs:
+        text = open('Trajs_'+dataset+'_random.txt', 'r').read() # don't worry we won't run out of file handles
+    else:
+        text = open('Trajs_'+dataset+'.txt', 'r').read() # don't worry we won't run out of file handles
+        
     geo=pd.read_csv(dataset+'-Taxi/roadmap.geo')    
     geo_ids=geo['geo_id'].apply(str).tolist()    
 
