@@ -184,7 +184,8 @@ if __name__ == '__main__':
     # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
     config.model.block_size = train_dataset.get_block_size()
-    
+    DP=False
+
     if lora:
         config.model.lora_rank = 8
         config.model.lora_alpha = 16
@@ -206,10 +207,9 @@ if __name__ == '__main__':
             print("Marking model as LoRA fine-tunable...")
             model = get_lora_model(model)
             print("Done.")
-        DP=True
+            DP=True
     else:
         model = GPT(config.model, adj_matrix = adj_matrix)
-        DP=False
 
 
     # Creating data indices for training and validation splits:
