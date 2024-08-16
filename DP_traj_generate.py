@@ -26,7 +26,7 @@ def save_to_gdf(traj, edges):
     fdf.to_file('random_'+str(i)+'_.geojson',driver='GeoJSON')
     
 
-dataset = "SF"
+dataset = "BJ"
 
 rel = pd.read_csv(dataset+'-Taxi/roadmap.rel')
 graph = nx.from_pandas_edgelist(rel, source='origin_id', target='destination_id')
@@ -43,15 +43,19 @@ sampling_probabilities = {key: len(values) / total_elements for key, values in r
 num_trajs = int(1e6)
 fo = open("Trajs_"+dataset+"_random.txt", "w")
 for i in tqdm(range(num_trajs)):
-    # Sample two keys with replacement based on their probabilities
-    sampled_keys = random.choices(list(region_links.keys()), weights=list(sampling_probabilities.values()), k=2)
-    # Sample one element from each of the sampled keys
-    sampled_elements = [random.choice(region_links[key]) for key in sampled_keys]
-    traj = nx.shortest_path(G=graph, source=sampled_elements[0], target=sampled_elements[1]) 
-    traj_str=','.join([str(t) for t in traj])
-    traj_str+='\n'
-    # save_to_gdf(traj, edges)
 
-    fo.write(traj_str + "\n")
+    try:
+        # Sample two keys with replacement based on their probabilities
+        sampled_keys = random.choices(list(region_links.keys()), weights=list(sampling_probabilities.values()), k=2)
+        # Sample one element from each of the sampled keys
+        sampled_elements = [random.choice(region_links[key]) for key in sampled_keys]
+        traj = nx.shortest_path(G=graph, source=sampled_elements[0], target=sampled_elements[1]) 
+        traj_str=','.join([str(t) for t in traj])
+        traj_str+='\n'
+        # save_to_gdf(traj, edges)
+
+        fo.write(traj_str + "\n")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 fo.close()
     

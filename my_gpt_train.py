@@ -22,16 +22,16 @@ from tqdm import tqdm
 # -----------------------------------------------------------------------------
 
 
-
-
 def get_config(dataset):
 
     C = CN()
+    
+    C.device = 'cuda'
 
     # system
     C.system = CN()
-    C.system.seed = 128
-    C.system.work_dir = './TS-TrajGen_'+dataset+'_synthetic/chargpt_adj_random_0407'
+    C.system.seed = 160
+    C.system.work_dir = './Trajs_'+dataset+'_synthetic/chargpt_DP'
 
     # data
     C.data = CharDataset.get_default_config()
@@ -39,11 +39,11 @@ def get_config(dataset):
     # model
     C.model = GPT.get_default_config()
     C.model.model_type = 'gpt-mobility'
-
+    C.model.device = C.device 
     # trainer
     C.trainer = Trainer.get_default_config()
     C.trainer.learning_rate = 5e-3 # the model we're using is so small that we can go a bit faster
-
+    C.trainer.device = C.device 
     return C
 
 # -----------------------------------------------------------------------------
@@ -56,8 +56,8 @@ class CharDataset(Dataset):
     @staticmethod
     def get_default_config():
         C = CN()
-        C.block_size = 300
-        C.max_length = 278
+        C.block_size = 81
+        C.max_length = 81
         return C
 
     def __init__(self, config, data, vocab):
@@ -69,8 +69,6 @@ class CharDataset(Dataset):
         line_words = [[self.EOS_TOKEN]+l.strip().split(',')+[self.EOS_TOKEN] for l in lines]
         words = [item for sublist in line_words for item in sublist]
         origins = [s[1] for s in line_words]
-        # vocab=list(set(words))
-        # chars = sorted(list(set(data)))
         data_size, vocab_size = len(words), len(vocab)
         print('data has %d characters, %d unique.' % (data_size, vocab_size))
 
@@ -80,9 +78,7 @@ class CharDataset(Dataset):
         self.stoi[self.EOS_TOKEN] = len(vocab)
         self.itos[len(vocab)] = self.EOS_TOKEN
         self.vocab_size = vocab_size + 1 
-        
-        # self.stoi[self.EOS_TOKEN] = len(vocab)+1
-        # self.itos[len(vocab)+1] = self.EOS_TOKEN
+    
         
         self.num_trajs = len(lines)
         self.data = words
@@ -143,14 +139,18 @@ def od_pair_to_adjacency_matrix(od_pair_list):
 
 if __name__ == '__main__':
     
-    dataset = "Porto"
+    dataset = "SF"
     
     model_load = False
-    gravity_sampling = True
+    gravity_sampling = False
+    adj = True
     lora = True
-    random_trajs = True
-    lora_training = False
-    create_RL_dataset = False
+
+    lora_training = True
+    random_trajs = False
+    eps=10
+
+    create_RL_dataset =False
     create_DPO_dataset = False
     num_samples = int(5e3)
     prompt_size = 4
@@ -183,8 +183,11 @@ if __name__ == '__main__':
     rel=pd.read_csv(dataset+'-Taxi/roadmap.rel')    
     rel['combined'] = rel.apply(lambda x: list([x['origin_id'], x['destination_id']]),axis=1)
     od_list=rel['combined'].tolist()
-    adj_matrix=od_pair_to_adjacency_matrix(od_list)
-    adj_matrix = adj_matrix.to('cuda')    
+    if adj:
+        adj_matrix=od_pair_to_adjacency_matrix(od_list)
+        adj_matrix = adj_matrix.to(config.device)    
+    else:
+        adj_matrix = None    
 
     # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
@@ -194,13 +197,13 @@ if __name__ == '__main__':
     if lora:
         config.model.lora_rank = 8
         config.model.lora_alpha = 16
-        config.model.lora_dropout = 0.05
+        config.model.lora_dropout = 0.00
 
         model = GPT(config.model, adj_matrix = adj_matrix)
         
         if lora_training:
 
-            ckpt_path = os.path.join(config.system.work_dir, "model.pt")
+            ckpt_path = os.path.join(config.system.work_dir, "model_base.pt")
             
             state_dict = torch.load(ckpt_path)
             unwanted_prefix = '_orig_mod.'
@@ -208,14 +211,13 @@ if __name__ == '__main__':
                 if k.startswith(unwanted_prefix):
                     state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
             
-            model.load_state_dict(torch.load(ckpt_path))
+            model.load_state_dict(state_dict)
             print("Marking model as LoRA fine-tunable...")
             model = get_lora_model(model)
             print("Done.")
             DP=True
     else:
         model = GPT(config.model, adj_matrix = adj_matrix)
-
 
     # Creating data indices for training and validation splits:
 ##############
@@ -250,13 +252,10 @@ if __name__ == '__main__':
     
         # Creating PT data samplers and loaders:
         train_sampler = SubsetRandomSampler(train_indices)
-        valid_sampler = SubsetRandomSampler(val_indices)
-    
-        # construct the trainer object    
-        trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler)        
+        valid_sampler = SubsetRandomSampler(val_indices)  
 
     # construct the trainer object    
-    trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler, DP = DP)
+    trainer = Trainer(config.trainer, model, train_dataset, train_sampler=train_sampler, val_sampler=valid_sampler, DP = DP, eps = eps)
 ##############
 
     # iteration callback
@@ -305,12 +304,15 @@ if __name__ == '__main__':
             
             syntehtic_links.append(d)
         
-        if lora:
-            file = open(config.system.work_dir+'/test_trajectories_lora.txt','wb')
+        if lora_training:
+            file = open(config.system.work_dir+'/test_trajectories_lora_eps'+str(eps)+'.txt','wb')
             pickle.dump(syntehtic_links,file)
         else:
+            ckpt_path = os.path.join(config.system.work_dir, "model_base.pt")
+            torch.save(model.state_dict(), ckpt_path)
             file = open(config.system.work_dir+'/test_trajectories.txt','wb')
             pickle.dump(syntehtic_links,file)
+
     elif create_RL_dataset:
         print('Creating RL dataset')
         preference_data=[]
@@ -334,7 +336,7 @@ if __name__ == '__main__':
             d = {'input': traj, 'candidate_0':candidate_0, 'candidate_1':candidate_1, 'choice':choice}
             preference_data.append(d)
         
-        file = open(config.system.work_dir+'/preference_dataset','wb')
+        file = open(config.system.work_dir+'/preference_dataset_adj','wb')
         pickle.dump(preference_data,file)
     elif create_DPO_dataset:
         print("Creating DPO dataset")
@@ -349,19 +351,19 @@ if __name__ == '__main__':
     
             y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
             candidate_0 = [train_dataset.itos[int(i)] for i in y]                
-            length_0 = geo[geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
+            # length_0 = geo[geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
     
-            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
-            candidate_1 = [train_dataset.itos[int(i)] for i in y]   
-            length_1 = geo[geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
+            # y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, temperature=1.0, do_sample=True, top_k=None)[0]
+            # candidate_1 = [train_dataset.itos[int(i)] for i in y]   
+            # length_1 = geo[geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
             
-            choice = np.argmin([abs(traj_length - length_0), abs(traj_length - length_1)])
-            chosen_response = candidate_0 if choice==0 else candidate_1
-            rejected_response = candidate_1 if choice==0 else candidate_0
+            # choice = np.argmin([abs(traj_length - length_0), abs(traj_length - length_1)])
+            # chosen_response = candidate_0 if choice==0 else candidate_1
+            # rejected_response = candidate_1 if choice==0 else candidate_0
 
             prompt_tokens = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], dtype=torch.long)[None,...].to('cuda')
-            chosen_response_tokens = torch.tensor([train_dataset.stoi[s] for s in chosen_response], dtype=torch.long)[None,...].to('cuda')
-            rejected_response_tokens = torch.tensor([train_dataset.stoi[s] for s in rejected_response], dtype=torch.long)[None,...].to('cuda')
+            chosen_response_tokens = torch.tensor([train_dataset.stoi[s] for s in traj], dtype=torch.long)[None,...].to('cuda')
+            rejected_response_tokens = torch.tensor([train_dataset.stoi[s] for s in candidate_0], dtype=torch.long)[None,...].to('cuda')
 
             prompt_chosen_tokens = torch.cat([prompt_tokens, chosen_response_tokens], dim=1)
             prompt_rejected_tokens = torch.cat([prompt_tokens, rejected_response_tokens], dim=1)

@@ -15,6 +15,8 @@ from tqdm import tqdm
 import gc
 import random
 from opacus import PrivacyEngine 
+from opacus.validators import ModuleValidator
+from opacus.utils.batch_memory_manager import BatchMemoryManager
 
 class Trainer:
 
@@ -22,22 +24,22 @@ class Trainer:
     def get_default_config():
         C = CN()
         # device to train on
-        C.device = 'cuda'
+        # C.device = 'cuda'
         # dataloder parameters
-        C.num_workers = 8
+        C.num_workers = 16
         # optimizer parameters
         C.max_iters = 3000
-        C.batch_size = 64
+        C.batch_size = 8
         C.learning_rate = 1e-4
         C.betas = (0.9, 0.95)
         C.weight_decay = 0.1 # only applied on matmul weights
         C.grad_norm_clip = 1.0
-        C.eps = 1.0
-        C.delta = 1e-6
+        C.eps = 5.0
+        C.delta = 1e-5
         
         return C
 
-    def __init__(self, config, model, train_dataset, train_sampler, val_sampler, DP=False):
+    def __init__(self, config, model, train_dataset, train_sampler, val_sampler, DP=False, eps = None):
         self.config = config
         self.model = model
         self.optimizer = None
@@ -47,6 +49,7 @@ class Trainer:
         self.train_sampler = train_sampler
         self.val_sampler = val_sampler
         self.DP = DP
+        self.eps = eps
 
         # determine the device we'll train on
         if config.device == 'auto':
@@ -89,6 +92,16 @@ class Trainer:
     def run(self):
         model, config = self.model, self.config
 
+        print("--------------------------------------------------------------------------------")
+        # Check if model is compatible with opacus 
+        if not ModuleValidator.is_valid(model):
+            print("Mobility GPT model is not compatible with DP training")
+            model = ModuleValidator.fix(model)
+        else:
+            print("Mobility GPT model can be trained with DP")
+
+        print("--------------------------------------------------------------------------------")
+
         # setup the optimizer
         self.optimizer = model.configure_optimizers(config)
 
@@ -96,54 +109,94 @@ class Trainer:
         train_loader = DataLoader(
             self.train_dataset,
             sampler=self.train_sampler,
-            pin_memory=True,
+            pin_memory=False,
             batch_size=config.batch_size,
             num_workers=config.num_workers,
         )
 
+        self.iter_num = 0
+        self.iter_time = time.time()
+
         if self.DP:
-            privacy_engine = PrivacyEngine()
+
+            privacy_engine = PrivacyEngine(accountant = "rdp")
             model, self.optimizer, train_loader = privacy_engine.make_private_with_epsilon(
                 module = model,
                 optimizer = self.optimizer,
                 data_loader = train_loader,
                 epochs = config.max_iters,
-                target_epsilon = config.eps,
+                target_epsilon = self.eps,
                 target_delta = config.delta,
                 max_grad_norm = config.grad_norm_clip,
                 )
             print("Training model with DP...")
 
-        model.train()
-        self.iter_num = 0
-        self.iter_time = time.time()
-        data_iter = iter(train_loader)
-        while True:
+            with BatchMemoryManager(
+                data_loader=train_loader, 
+                max_physical_batch_size=config.batch_size, 
+                optimizer=self.optimizer
+            ) as memory_safe_data_loader:
 
-            # fetch the next batch (x, y) and re-init iterator if needed
-            try:
-                batch = next(data_iter)
-            except StopIteration:
-                data_iter = iter(train_loader)
-                batch = next(data_iter)
-            batch = [t.to(self.device) for t in batch]
-            x, y = batch
+                data_iter = iter(memory_safe_data_loader)
 
-            # forward the model
-            logits, self.loss = model(x, y)
+                while True:
 
-            # backprop and update the parameters
-            model.zero_grad(set_to_none=True)
-            self.loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
-            self.optimizer.step()
+                    self.optimizer.zero_grad()  # Clear gradients
 
-            self.trigger_callbacks('on_batch_end')
-            self.iter_num += 1
-            tnow = time.time()
-            self.iter_dt = tnow - self.iter_time
-            self.iter_time = tnow
+                    try:
+                        batch = next(data_iter)
+                    except StopIteration:
+                        data_iter = iter(memory_safe_data_loader)
+                        batch = next(data_iter)
+                    batch = [t.to(self.device) for t in batch]
+                    x, y = batch
 
-            # termination conditions
-            if config.max_iters is not None and self.iter_num >= config.max_iters:
-                break
+                    # forward the model
+                    logits, self.loss = model(x, y)
+
+                    # backprop and update the parameters
+                    model.zero_grad(set_to_none=True)
+                    self.loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
+                    self.optimizer.step()
+
+                    self.trigger_callbacks('on_batch_end')
+                    self.iter_num += 1
+                    tnow = time.time()
+                    self.iter_dt = tnow - self.iter_time
+                    self.iter_time = tnow
+
+                    # termination conditions
+                    if config.max_iters is not None and self.iter_num >= config.max_iters:
+                        break
+        else:
+            data_iter = iter(train_loader)
+            while True:
+
+                self.optimizer.zero_grad()  # Clear gradients
+                try:
+                    batch = next(data_iter)
+                except StopIteration:
+                    data_iter = iter(train_loader)
+                    batch = next(data_iter)
+                batch = [t.to(self.device) for t in batch]
+                x, y = batch
+
+                # forward the model
+                logits, self.loss = model(x, y)
+
+                # backprop and update the parameters
+                model.zero_grad(set_to_none=True)
+                self.loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
+                self.optimizer.step()
+
+                self.trigger_callbacks('on_batch_end')
+                self.iter_num += 1
+                tnow = time.time()
+                self.iter_dt = tnow - self.iter_time
+                self.iter_time = tnow
+
+                # termination conditions
+                if config.max_iters is not None and self.iter_num >= config.max_iters:
+                    break
