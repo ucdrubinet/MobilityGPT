@@ -20,25 +20,6 @@ from opacus.utils.batch_memory_manager import BatchMemoryManager
 
 class Trainer:
 
-    @staticmethod
-    def get_default_config():
-        C = CN()
-        # device to train on
-        # C.device = 'cuda'
-        # dataloder parameters
-        C.num_workers = 16
-        # optimizer parameters
-        C.max_iters = 3000
-        C.batch_size = 8
-        C.learning_rate = 1e-4
-        C.betas = (0.9, 0.95)
-        C.weight_decay = 0.1 # only applied on matmul weights
-        C.grad_norm_clip = 1.0
-        C.eps = 5.0
-        C.delta = 1e-5
-        
-        return C
-
     def __init__(self, config, model, train_dataset, train_sampler, val_sampler, DP=False, eps = None):
         self.config = config
         self.model = model

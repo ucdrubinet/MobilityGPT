@@ -2,10 +2,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from shapely import wkt
-from shapely.geometry import Point, LineString
-import pyproj
-from shapely.ops import transform
-from functools import partial
+from shapely.geometry import LineString
 import geopy.distance
 import pickle
 from math import radians, sin, cos, sqrt, atan2
@@ -55,20 +52,6 @@ def convert_gps_to_2d_grid(gps_locations, lines, distance):
 
     grid_lat= int(length1//distance)
     grid_lon= int(length2//distance)
-
-    # line1 = LineString([(min_longitude, min_latitude), (min_longitude, max_latitude)])
-    # line2 = LineString([(min_longitude, min_latitude), (max_longitude, min_latitude)])
-    
-    # # Geometry transform function based on pyproj.transform
-    # project = partial(
-    #     pyproj.transform,
-    #     # pyproj.Proj('EPSG:4236'),
-    #     pyproj.Proj('EPSG:3857'),
-    #     pyproj.Proj('EPSG:32633'))
-    
-    # line_lat = transform(project, line1)
-    # line_lon = transform(project, line2)
-
       
     # Create a 2D grid of coordinates.
     grid_coordinates = [np.linspace(min_latitude, max_latitude, grid_lat), np.linspace(min_longitude, max_longitude, grid_lon)]
@@ -113,10 +96,9 @@ def convert_gps_to_2d_grid(gps_locations, lines, distance):
     
     return gdf, region_links, links_region
 
-dataset='BJ'
+dataset='SF'
 geo_data=pd.read_csv('./'+dataset+'-Taxi/roadmap.geo')   
 
-    
 lats = []
 lons = []
 coords = []

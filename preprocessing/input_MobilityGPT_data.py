@@ -1,5 +1,4 @@
 import numpy as np
-# import geopandas as gpd
 import pandas as pd
 
 split = False
@@ -37,7 +36,7 @@ else:
         traj_str+='\n'
         trajectories.append(traj_str)
         
-    fo = open(dataset+"_trajs.txt", "w")
+    fo = open("Trajs_"+dataset+".txt", "w")
     for element in trajectories:
         fo.write(element + "\n")
     fo.close()

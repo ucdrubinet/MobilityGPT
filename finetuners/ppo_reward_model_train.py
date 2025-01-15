@@ -12,7 +12,7 @@ from torch.nn.functional import normalize
 
 from mobilitygpt.model import GPT
 from mobilitygpt.trainer import Trainer
-from mobilitygpt.reward_trainer import RewardTrainer
+from mobilitygpt.ppo_reward_trainer import RewardTrainer
 from mobilitygpt.utils import set_seed, setup_logging, CfgNode as CN
 import random
 import pickle
