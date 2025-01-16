@@ -40,4 +40,4 @@ def generate_synthetic_trajectories(model, dataset, config):
     
     with open(file_path, 'wb') as f:
         pickle.dump(synthetic_links, f)
-    
+        

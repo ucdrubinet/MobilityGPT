@@ -21,7 +21,7 @@ def get_base_config():
     # Model
     C.model = CN()
     C.model.model_type = 'gpt-mobility'
-    C.model.use_lora = True  # LoRA is default
+    C.model.use_lora = False  
     C.model.load_path = None
     C.model.use_adjacency = True  # Use adjacency matrix by default
     C.model.vocab_size = None  # Will be set based on dataset

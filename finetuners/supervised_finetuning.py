@@ -1,6 +1,6 @@
 from .base_finetuner import BaseFinetuner
 import torch
-from mobilitygpt.trainer import Trainer
+from mobilitygpt.reward_trainer import RewardTrainer
 import os
 
 class SupervisedFinetuner(BaseFinetuner):
@@ -11,7 +11,7 @@ class SupervisedFinetuner(BaseFinetuner):
     def train(self):
         train_sampler, val_sampler = self.create_data_samplers()
         
-        trainer = Trainer(
+        trainer = RewardTrainer(
             self.config.training,
             self.model,
             self.dataset,

@@ -96,7 +96,8 @@ def create_rl_dataset(model, train_dataset, geo, config):
     print('Creating RL dataset')
     preference_data = []
     
-    for _ in tqdm(range(config.training.num_samples)):
+    pbar = tqdm(range(config.training.num_samples))
+    while len(preference_data) < config.training.num_samples:
         # Sample random trajectory
         traj = random.sample(train_dataset.trajs, 1)[0]
         traj_first_n = traj[:config.training.prompt_size]
@@ -105,36 +106,50 @@ def create_rl_dataset(model, train_dataset, geo, config):
         x = torch.tensor([train_dataset.stoi[s] for s in traj_first_n], 
                         dtype=torch.long)[None,...].to(config.system.device)
         
-        # Calculate original trajectory length
-        traj_length = geo[geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
-        
-        # Generate two candidates
-        y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, 
-                              temperature=1.0, do_sample=True, top_k=None)[0]
-        candidate_0 = [train_dataset.itos[int(i)] for i in y]
-        length_0 = geo[geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
-        
-        y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, 
-                              temperature=1.0, do_sample=True, top_k=None)[0]
-        candidate_1 = [train_dataset.itos[int(i)] for i in y]
-        length_1 = geo[geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
-        
-        # Choose based on length difference
-        choice = np.argmin([abs(traj_length - length_0), abs(traj_length - length_1)])
-        
-        d = {
-            'input': traj,
-            'candidate_0': candidate_0,
-            'candidate_1': candidate_1,
-            'choice': choice
-        }
-        preference_data.append(d)
+        try:
+            # Calculate original trajectory length
+            traj_length = geo[geo['geo_id'].isin([int(t) for t in traj[1:-1]])].length.sum()
+            
+            # Generate two candidates
+            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, 
+                                  temperature=1.0, do_sample=True, top_k=None)[0]
+            candidate_0 = [train_dataset.itos[int(i)] for i in y]
+            # Skip if candidate contains only EOS tokens
+            if all(t == train_dataset.EOS_TOKEN for t in candidate_0[1:]):
+                continue
+            length_0 = geo[geo['geo_id'].isin([int(t) for t in candidate_0[1:]])].length.sum()
+            
+            y = model.generate_test(x, train_dataset.itos, train_dataset.EOS_TOKEN, 
+                                  temperature=1.0, do_sample=True, top_k=None)[0]
+            candidate_1 = [train_dataset.itos[int(i)] for i in y]
+            # Skip if candidate contains only EOS tokens
+            if all(t == train_dataset.EOS_TOKEN for t in candidate_1[1:]):
+                continue
+            length_1 = geo[geo['geo_id'].isin([int(t) for t in candidate_1[1:]])].length.sum()
+            
+            # Choose based on length difference
+            choice = np.argmin([abs(traj_length - length_0), abs(traj_length - length_1)])
+            
+            d = {
+                'input': traj,
+                'candidate_0': candidate_0,
+                'candidate_1': candidate_1,
+                'choice': choice
+            }
+            preference_data.append(d)
+            pbar.update(1)
+        except ValueError:
+            # Skip this iteration if we encounter invalid values
+            print('ValueError')
+            continue
+    
+    pbar.close()
     
     # Save dataset
-    file_path = f"{config.system.work_dir}/preference_dataset_rl"
+    file_path = f"{config.system.work_dir}/preference_dataset"
     with open(file_path, 'wb') as f:
         pickle.dump(preference_data, f)
-    
+        
 
 def create_dpo_dataset(model, train_dataset, config):
     """Create dataset for DPO training"""
