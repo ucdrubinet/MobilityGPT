@@ -6,7 +6,6 @@ from mobilitygpt.model import GPT
 from mobilitygpt.trainer import Trainer
 from finetuners.supervised_finetuning import SupervisedFinetuner
 from finetuners.dpo_finetuning import DPOFinetuner
-from finetuners.ppo_reward_finetuning import PPORewardFinetuner
 from finetuners.ppo_finetuning import PPOFinetuner
 from torch.utils.data.sampler import SubsetRandomSampler, WeightedRandomSampler
 
@@ -64,19 +63,27 @@ def train_supervised(model, dataset, config):
 def train_ppo(model, dataset, config):
     """Train with PPO finetuning"""
     print("Starting PPO training")
-    # First train reward model
-    reward_finetuner = PPORewardFinetuner(
-        config=config,
-        model=model,
-        dataset=dataset,
-        gravity_sampling=config.training.gravity_sampling
-    )
-    pairs = reward_finetuner.create_comparison_dataset_ls(config)
-    reward_finetuner.train(pairs)
     
-    # Load trained reward model
+    # Try to load supervised model as reward model, if not exists train one
     reward_model = GPT(config.model, reward_model=True)
-    reward_model.load_state_dict(torch.load(f"{config.system.work_dir}/reward_model.pt"))
+    supervised_path = f"{config.system.work_dir}/model_supervised.pt"
+    
+    if os.path.exists(supervised_path):
+        print("Loading existing supervised model as reward model...")
+        reward_model.load_state_dict(torch.load(supervised_path))
+    else:
+        print("No supervised model found. Performing supervised finetuning for reward model first...")
+        # Create a copy of model for supervised training
+        reward_model.load_state_dict(model.state_dict())
+        supervised_finetuner = SupervisedFinetuner(
+            config=config,
+            model=reward_model,
+            dataset=dataset,
+            gravity_sampling=config.training.gravity_sampling,
+            dp_epsilon=config.training.dp_epsilon
+        )
+        supervised_finetuner.train()
+        save_checkpoint(reward_model, config, "model_supervised.pt")
     reward_model.eval()
     
     # PPO training

@@ -29,11 +29,6 @@ class SupervisedFinetuner(BaseFinetuner):
                 torch.save(self.model.state_dict(), ckpt_path)
                 self.model.train()
 
-        def validation_end_callback(trainer):
-            print(f"iter_dt {trainer.iter_dt * 1000:.2f}ms; iter {trainer.iter_num}: "
-                  f"train loss {trainer.loss.item():.5f} val loss {trainer.val_loss:.5f}")
 
-        trainer.set_callback('on_batch_end', batch_end_callback)
-        trainer.add_callback('validation_end', validation_end_callback)
-        
+        trainer.set_callback('on_batch_end', batch_end_callback)        
         trainer.run()
