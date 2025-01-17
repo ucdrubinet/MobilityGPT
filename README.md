@@ -39,7 +39,7 @@ pip install -e . # this will install the dependencies and the package
 
 The project utilizes publicly available San Francisco Taxi dataset. We preprocessed and extracted map-matched trajectories. We follow the same data structure for all datasets (Porto and Beijing) and inspired from the [Ts-TrajGen](https://github.com/WenMellors/TS-TrajGen).
 
-The dataset can be downloaded from  our [Drive]()
+The dataset can be downloaded from  our [Drive](https://drive.google.com/drive/folders/1jgm3-joMt15zGIbXo85UUhm8rrf47Kc6?usp=sharing)
 
 ## Preprocessing
 
