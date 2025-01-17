@@ -1,7 +1,6 @@
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from mobilitygpt.utils import CfgNode as CN
 
 class PairwiseDataset(Dataset):
     """Dataset for pairwise comparison training (used in PPO reward and supervised training)"""

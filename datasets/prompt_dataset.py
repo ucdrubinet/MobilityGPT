@@ -1,7 +1,6 @@
 import torch
 from torch.utils.data import Dataset
 import numpy as np
-from mobilitygpt.utils import CfgNode as CN
 
 class PromptDataset(Dataset):
     """Dataset for PPO training with prompts"""

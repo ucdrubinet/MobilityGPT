@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from mobilitygpt.utils import CfgNode as CN
+from mobilitygpt.config_utils import CfgNode as CN
 
 # -----------------------------------------------------------------------------
 

@@ -8,12 +8,7 @@ from collections import defaultdict
 
 import torch
 from torch.utils.data.dataloader import DataLoader
-from mobilitygpt.utils import CfgNode as CN
 from scipy.spatial import distance
-import pandas as pd
-from tqdm import tqdm
-import gc
-import random
 from opacus import PrivacyEngine 
 from opacus.validators import ModuleValidator
 from opacus.utils.batch_memory_manager import BatchMemoryManager

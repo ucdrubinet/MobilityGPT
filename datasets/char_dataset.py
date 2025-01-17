@@ -1,6 +1,5 @@
 import torch
 from torch.utils.data import Dataset
-from mobilitygpt.utils import CfgNode as CN
 
 class CharDataset(Dataset):
     """Dataset for character-level trajectory data"""

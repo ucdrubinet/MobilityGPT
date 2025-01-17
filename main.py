@@ -1,6 +1,6 @@
 import torch
 from mobilitygpt.model import GPT, get_lora_model
-from mobilitygpt.utils import set_seed, setup_logging
+from mobilitygpt.config_utils import set_seed, setup_logging
 from mobilitygpt.args import parse_args
 from mobilitygpt.config import get_config_from_args
 from mobilitygpt.synthetic import generate_synthetic_trajectories

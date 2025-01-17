@@ -1,4 +1,4 @@
-from mobilitygpt.utils import CfgNode as CN
+from mobilitygpt.config_utils import CfgNode as CN
 import torch
 
 def get_base_config():
