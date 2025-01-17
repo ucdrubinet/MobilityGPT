@@ -13,6 +13,7 @@ from mobilitygpt.trainer_utils import (
 )
 from datasets.char_dataset import CharDataset
 from datasets.pairwise_dataset import PairwiseDataset
+from datasets.prompt_dataset import PromptDataset
 from datasets.data_utils import create_rl_dataset, create_dpo_dataset
 
 def main():
@@ -45,14 +46,15 @@ def main():
     elif config.training.create_dpo_dataset:
         create_dpo_dataset(model, train_dataset, config)
 
-    pairs = create_comparison_dataset_ls(config)
-    finetune_dataset = PairwiseDataset(config.data, text, geo_ids, pairs)
     
     if config.training.mode == 'supervised':
+        pairs = create_comparison_dataset_ls(config)
+        finetune_dataset = PairwiseDataset(config.data, text, geo_ids, pairs)
         train_supervised(model, finetune_dataset, config)
     
     elif config.training.mode == 'ppo':
-        train_ppo(model, finetune_dataset, config)
+        prompt_dataset = PromptDataset(config.data, text, geo_ids, config.training.prompt_size)
+        train_ppo(model, prompt_dataset, config)
     
     elif config.training.mode == 'dpo':
         train_dpo(model, train_dataset, config)
@@ -80,7 +82,8 @@ def initialize_model(config, dataset, od_list):
     if config.training.mode != 'pretrain':
         if not config.model.load_path:
             raise ValueError(f"Pretrained model path must be provided for {config.training.mode} finetuning")
-        model.load_state_dict(torch.load(config.model.load_path))
+        path = f"{config.system.work_dir}/{config.model.load_path}.pt"
+        model.load_state_dict(torch.load(path))
         print(f"Loaded pretrained model from {config.model.load_path}")
         
     return model.to(config.system.device), adj_matrix

@@ -8,7 +8,7 @@ class PromptDataset(Dataset):
     
     def __init__(self, config, data, vocab, prompt_size):
         self.config = config
-        self.EOS_TOKEN = ' '
+        self.EOS_TOKEN = '</S>'
         
         # Process raw data
         lines = data.strip().split('\n\n') 

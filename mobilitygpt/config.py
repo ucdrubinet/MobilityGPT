@@ -11,6 +11,24 @@ def get_base_config():
     C.system.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     C.system.work_dir = None  # Will be set based on dataset
     
+    # Policy (PPO) settings
+    C.policy = CN()
+    C.policy.seq_length = 278
+    C.policy.batch_size = 128
+    C.policy.prompt_size = 30
+    C.policy.prompt_batch_size = 128
+    C.policy.num_rollouts = 128
+    C.policy.epochs = 100
+    C.policy.ppo_epochs = 4
+    C.policy.kl_coef = 0.01
+    C.policy.gamma = 1
+    C.policy.lam = 0.95
+    C.policy.cliprange = 0.2
+    C.policy.cliprange_value = 0.2
+    C.policy.vf_coef = 1
+    C.policy.learning_rate = 5e-3
+    C.policy.temperature = 0.3
+    
     # Data
     C.data = CN()
     C.data.dataset = "SF"  # Dataset name
@@ -88,7 +106,7 @@ def get_config_from_args(args):
     config.data.random_trajs = args.random_trajs
     
     # Update model settings
-    config.model.use_lora = not args.no_lora
+    config.model.use_lora = not args.lora
     if args.model_path:
         config.model.load_path = args.model_path
     

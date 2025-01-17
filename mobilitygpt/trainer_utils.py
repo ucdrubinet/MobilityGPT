@@ -7,6 +7,7 @@ from mobilitygpt.trainer import Trainer
 from finetuners.supervised_finetuning import SupervisedFinetuner
 from finetuners.dpo_finetuning import DPOFinetuner
 from finetuners.ppo_finetuning import PPOFinetuner
+from mobilitygpt.ppo_policy_trainer import Agent
 from torch.utils.data.sampler import SubsetRandomSampler, WeightedRandomSampler
 
 def train_base_model(model, dataset, config, adj_matrix=None):
@@ -64,8 +65,9 @@ def train_ppo(model, dataset, config):
     """Train with PPO finetuning"""
     print("Starting PPO training")
     
+    # Create reward model with same config as base model
+    reward_model = GPT(config.model)
     # Try to load supervised model as reward model, if not exists train one
-    reward_model = GPT(config.model, reward_model=True)
     supervised_path = f"{config.system.work_dir}/model_supervised.pt"
     
     if os.path.exists(supervised_path):
@@ -84,19 +86,31 @@ def train_ppo(model, dataset, config):
         )
         supervised_finetuner.train()
         save_checkpoint(reward_model, config, "model_supervised.pt")
+    # Set reward model mode after loading
+    reward_model.reward_model = True
     reward_model.eval()
+    
+    # Create policy and reference models
+    policy_model = Agent(model, trainable=True)
+
+    # Create new instance for reference model
+    ref_model_base = GPT(config.model, adj_matrix=model.adj_matrix)
+    ref_model_base.load_state_dict(model.state_dict())
+    ref_model_base = ref_model_base.to(config.system.device)
+    ref_model = Agent(ref_model_base, trainable=False)
     
     # PPO training
     ppo_finetuner = PPOFinetuner(
         config=config,
-        model=model,
+        policy_model=policy_model,
+        ref_model=ref_model,
         dataset=dataset,
         reward_model=reward_model,
         gravity_sampling=config.training.gravity_sampling,
         prompt_size=config.training.prompt_size
     )
     ppo_finetuner.train()
-    save_checkpoint(model, config, "model_ppo.pt")
+    save_checkpoint(policy_model.model, config, "model_ppo.pt")
 
 def train_dpo(model, dataset, config):
     """Train with DPO finetuning"""

@@ -12,15 +12,6 @@ from torch.utils.data.dataloader import DataLoader
 
 class RewardTrainer:
     """A trainer for reward models using pairwise preference data"""
-    
-    @staticmethod
-    def get_default_config():
-        C = CN()
-        C.learning_rate = 6e-4
-        C.betas = (0.9, 0.95)
-        C.weight_decay = 0.1
-        C.grad_norm_clip = 1.0
-        return C
         
     def __init__(self, config, model, train_dataset, train_sampler=None, val_sampler=None):
         self.config = config

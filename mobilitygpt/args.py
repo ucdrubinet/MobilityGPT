@@ -11,8 +11,8 @@ def parse_args():
                         help='Device to use for training (default: auto)')
     
     # Model arguments
-    parser.add_argument('--no-lora', action='store_true',
-                        help='Disable LoRA layers')
+    parser.add_argument('--lora', action='store_true',
+                        help='Enable LoRA layers')
     parser.add_argument('--model-path', type=str, required='pretrain' not in sys.argv,
                         help='Path to pretrained model (required for finetuning)')
     
