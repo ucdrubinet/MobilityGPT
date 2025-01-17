@@ -1,27 +1,13 @@
-"""
-Simple training loop; Boilerplate that could apply to any arbitrary neural network,
-so nothing in this file really has anything to do with GPT specifically.
-"""
-
 import time
-from collections import defaultdict
-import torch.nn as nn
-import torch.nn.functional as F
-import torch
-from torch.utils.data.dataloader import DataLoader
-# from mingpt.utils import CfgNode as CN
-# from scipy.spatial import distance
-# import pandas as pd
-# from tqdm import tqdm
-# import gc
 import random
-
+import torch
+import torch.nn.functional as F
+from collections import defaultdict
 
 KEY_PCT = 'prompt_chosen_tokens'
 KEY_PRT = 'prompt_rejected_tokens'
 KEY_CLM = 'chosen_loss_mask'
 KEY_RLM = 'rejected_loss_mask'
-
 
 def pad_tensor(seq, max_len, pad_value):
   """
@@ -110,8 +96,7 @@ def loss_fn(
   rejected_policy_log_ps,
   chosen_ref_log_ps,
   rejected_ref_log_ps,
-  beta=0.01
-):
+  beta=0.01):
   """
   args:
     chosen_policy_log_ps: A tensor of shape (batch_size,)
@@ -136,7 +121,7 @@ def loss_fn(
   return loss, chosen_reward, rejected_reward
 
 
-def compute_loss(policy_model, ref_model, batch, beta):
+def compute_loss(policy_model, ref_model, batch, beta, device):
   """
   args:
     policy_model: The policy model, $\pi_{\theta}$
@@ -148,10 +133,10 @@ def compute_loss(policy_model, ref_model, batch, beta):
   """
 
   chosen_tokens, rejected_tokens, chosen_loss_masks, rejected_loss_masks = batch
-  chosen_tokens = chosen_tokens.to('cuda:0')
-  rejected_tokens = rejected_tokens.to('cuda:0')
-  chosen_loss_masks = chosen_loss_masks.to('cuda:0')
-  rejected_loss_masks = rejected_loss_masks.to('cuda:0')
+  chosen_tokens = chosen_tokens.to(device)
+  rejected_tokens = rejected_tokens.to(device)
+  chosen_loss_masks = chosen_loss_masks.to(device)
+  rejected_loss_masks = rejected_loss_masks.to(device)
 
   chosen_policy_logits, _ = policy_model(chosen_tokens)
   chosen_policy_log_ps = get_log_ps(
@@ -184,24 +169,14 @@ def compute_loss(policy_model, ref_model, batch, beta):
 class DPOTrainer:
 
 
-    def __init__(self, config, model, reference_model, train_dataset, val_sampler=None):
+    def __init__(self, config, model, reference_model, train_dataset):
         self.config = config
-        self.model = model
+        self.policy_model = model
         self.reference_model = reference_model
         self.optimizer = None
         self.train_dataset = train_dataset
         self.callbacks = defaultdict(list)
-        self.val_loss = None
-        self.val_sampler = val_sampler
         self.max_iters = 3000
-
-        # determine the device we'll train on
-        if config.device == 'auto':
-            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        else:
-            self.device = config.device
-        self.model = self.model.to(self.device)
-        print("running on device", self.device)
 
         # variables that will be assigned to trainer class later for logging and etc
         self.iter_num = 0
@@ -220,22 +195,20 @@ class DPOTrainer:
             callback(self)
 
     def run(self):
-        policy_model, reference_model, config = self.model, self.reference_model, self.config
 
         # setup the optimizer
-        self.optimizer = policy_model.configure_optimizers(config)
+        self.optimizer = self.policy_model.configure_optimizers(self.config.training)
 
-        policy_model.train()
+        self.policy_model.train()
         self.iter_num = 0
         self.iter_time = time.time()
         while True:
-
             # fetch the next batch (x, y) and re-init iterator if needed
-            examples = random.sample(self.train_dataset, config.batch_size)
-            max_len = min(278, get_max_len(examples))
+            examples = random.sample(self.train_dataset, self.config.training.batch_size)
+            max_len = min(self.config.data.max_length, get_max_len(examples))
             batch = get_padded_batch(examples, max_len)
             self.loss, self.chosen_reward, self.rejected_reward = compute_loss(
-            policy_model, reference_model, batch, 0.1
+            self.policy_model, self.reference_model, batch, 0.1, self.config.system.device
             )
             self.loss.backward()
             self.optimizer.step() 
@@ -246,9 +219,7 @@ class DPOTrainer:
             tnow = time.time()
             self.iter_dt = tnow - self.iter_time
             self.iter_time = tnow
-            self.trigger_callbacks('on_batch_end')
-            #print('iter time:', self.iter_dt, 'iter: ', self.iter_num, 'loss: ', loss.item(), 'chosen_reward: ', chosen_reward.item(), 'rejected_reward: ', rejected_reward.item())
-            
+            self.trigger_callbacks('on_batch_end')            
 
             # termination conditions
             if self.max_iters is not None and self.iter_num >= self.max_iters:

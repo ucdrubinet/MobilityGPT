@@ -57,7 +57,9 @@ def main():
         train_ppo(model, prompt_dataset, config)
     
     elif config.training.mode == 'dpo':
-        train_dpo(model, train_dataset, config)
+        path = f"{config.system.work_dir}/preference_dataset_dpo"
+        reward_dataset = torch.load(path)
+        train_dpo(model, reward_dataset, config)
 
     generate_synthetic_trajectories(model, train_dataset, config)
 

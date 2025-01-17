@@ -4,8 +4,8 @@ from mobilitygpt.reward_trainer import RewardTrainer
 import os
 
 class SupervisedFinetuner(BaseFinetuner):
-    def __init__(self, config, model, dataset, gravity_sampling=False, dp_epsilon=10):
-        super().__init__(config, model, dataset, gravity_sampling)
+    def __init__(self, config, model, dataset, dp_epsilon=10):
+        super().__init__(config, model, dataset)
         self.dp_epsilon = dp_epsilon
         
     def train(self):

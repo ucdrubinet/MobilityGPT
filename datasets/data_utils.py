@@ -197,9 +197,7 @@ def create_dpo_dataset(model, train_dataset, config):
             'rejected_loss_mask': rejected_loss_mask.squeeze()
         }
         preference_data.append(dataset_example)
-        
+
     # Save dataset
     file_path = f"{config.system.work_dir}/preference_dataset_dpo"
-    with open(file_path, 'wb') as f:
-        pickle.dump(preference_data, f)
-        
+    torch.save(preference_data, file_path)

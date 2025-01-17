@@ -13,7 +13,7 @@ def get_base_config():
     
     # Policy (PPO) settings
     C.policy = CN()
-    C.policy.seq_length = 278
+    C.policy.seq_length = 81
     C.policy.batch_size = 128
     C.policy.prompt_size = 30
     C.policy.prompt_batch_size = 128

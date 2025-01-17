@@ -5,11 +5,10 @@ import numpy as np
 import pandas as pd
 
 class BaseFinetuner(ABC):
-    def __init__(self, config, model, dataset, gravity_sampling=False):
+    def __init__(self, config, model, dataset):
         self.config = config
         self.model = model
         self.dataset = dataset
-        self.gravity_sampling = gravity_sampling
         
     def create_data_samplers(self, validation_split=0.2, shuffle_dataset=True, random_seed=42):
         return self._create_random_samplers(validation_split, shuffle_dataset, random_seed)

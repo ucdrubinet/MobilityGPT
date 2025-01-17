@@ -7,8 +7,8 @@ from .base_finetuner import BaseFinetuner
 class PPOFinetuner(BaseFinetuner):
     """Finetuner for PPO training"""
     
-    def __init__(self, config, policy_model, ref_model, dataset, reward_model, gravity_sampling=False, prompt_size=4):
-        super().__init__(config, policy_model.model, dataset, gravity_sampling)
+    def __init__(self, config, policy_model, ref_model, dataset, reward_model, prompt_size=4):
+        super().__init__(config, policy_model.model, dataset)
         self.prompt_size = prompt_size
         self.reward_model = reward_model
         self.policy_model = policy_model

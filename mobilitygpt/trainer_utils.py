@@ -115,31 +115,43 @@ def train_ppo(model, dataset, config):
 def train_dpo(model, dataset, config):
     """Train with DPO finetuning"""
     print("Starting DPO training")
+
+    # Create reward model with same config as base model
+    reference_model = GPT(config.model)
+    # Try to load supervised model as reward model, if not exists train one
+    supervised_path = f"{config.system.work_dir}/model_supervised.pt"
+    
+    if os.path.exists(supervised_path):
+        print("Loading existing supervised model as reward model...")
+        reference_model.load_state_dict(torch.load(supervised_path))
+    else:
+        print("No supervised model found. Performing supervised finetuning for reward model first...")
+        # Create a copy of model for supervised training
+        reference_model.load_state_dict(model.state_dict())
+        supervised_finetuner = SupervisedFinetuner(
+            config=config,
+            model=reference_model,
+            dataset=dataset,
+            gravity_sampling=config.training.gravity_sampling,
+            dp_epsilon=config.training.dp_epsilon
+        )
+        supervised_finetuner.train()
+        save_checkpoint(reference_model, config, "model_supervised.pt")
+    # Set reward model mode after loading
+    reference_model.eval()
+
+
     dpo_finetuner = DPOFinetuner(
         config=config,
         model=model,
+        reference_model=reference_model,
         dataset=dataset,
-        prompt_size=config.training.prompt_size
     )
     
-    # Create and split dataset
-    preference_data = dpo_finetuner.create_dpo_dataset(config.training.num_samples)
-    train_size = int(0.8 * len(preference_data))
-    train_data = preference_data[:train_size]
-    val_data = preference_data[train_size:]
-    
-    # Create reference model
-    reference_model = type(model)(config.model)
-    reference_model.load_state_dict(model.state_dict())
-    reference_model.eval()
-    
     # Train
-    dpo_finetuner.train(train_data, val_data, reference_model)
+    dpo_finetuner.train()
     save_checkpoint(model, config, "model_dpo.pt")
     
-    # Save dataset
-    torch.save(preference_data, os.path.join(config.system.work_dir, 'dpo_preference_dataset.pt'))
-
 def create_samplers(dataset, config):
     """Create train and validation samplers"""
     if config.training.gravity_sampling:
