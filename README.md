@@ -35,6 +35,12 @@ source mobilitygpt/bin/activate  # On Unix/macOS
 pip install -e . # this will install the dependencies and the package
 ```
 
+## Dataset
+
+The project utilizes publicly available San Francisco Taxi dataset. We preprocessed and extracted map-matched trajectories. We follow the same data structure for all datasets (Porto and Beijing) and inspired from the [Ts-TrajGen](https://github.com/WenMellors/TS-TrajGen).
+
+The dataset can be downloaded from  our [Drive]()
+
 ## Preprocessing
 
 
@@ -50,27 +56,23 @@ python preprocessing/gravity_based_sampling.py
 ```
 
 
-## Dataset
-
-The project utilizes publicly available San Francisco Taxi dataset. We preprocessed and extracted map-matched trajectories. We follow the same data structure for all datasets (Porto and Beijing) and inspired from the [Ts-TrajGen](https://github.com/WenMellors/TS-TrajGen).
-
 ## Usage
 
 ### Pretraining
 
 ```bash
-python mobilitygpt/train.py --dataset SF --mode pretrain
+python main.py --dataset SF --mode pretrain
 ```
 
 ### SupervisedFine-tuning
 
 ```bash
-python mobilitygpt/train.py --dataset SF --mode supervised --model-path model_pretrain
+python main.py --dataset SF --mode supervised --model-path model_pretrain
 ```
 
 ### DPO Training
 ```bash
-python mobilitygpt/train.py --dataset SF --mode dpo --create-dpo-dataset --model-path model_supervised
+python main.py --dataset SF --mode dpo --create-dpo-dataset --model-path model_supervised
 ```
 
 ### RLTF (PPO) Training
