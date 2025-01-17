@@ -11,8 +11,7 @@ MobilityGPT learns to generate realistic mobility trajectories by training on ro
 - Gravity-based trajectory sampling
 - LoRA (Low-Rank Adaptation) fine-tuning support
 - Differential Privacy training options
-- Multiple training approaches (Base, DPO, PPO)
-
+- Multiple training approaches (Base, DPO, RLTF)
 
 ### Prerequisites
 - Python 3.9+
@@ -99,7 +98,7 @@ python mobilitygpt/train.py --dataset SF --mode ppo --create-rl-dataset --model-
 - Standard training
 - LoRA fine-tuning
 - Differential Privacy
-- PPO fine-tuning
+- RLTF fine-tuning
 - DPO training
 
 
