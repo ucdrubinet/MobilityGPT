@@ -1,6 +1,6 @@
 # MobilityGPT
 
-A road-segment-level GPT model for generating and predicting mobility trajectories.
+A road-segment-level decoder-only (GPT) model for generating and predicting mobility trajectories.
 
 ## Overview
 
@@ -23,7 +23,56 @@ MobilityGPT learns to generate realistic mobility trajectories by training on ro
 Your dataset directory (e.g., `SF-Taxi/`) should contain:
 - `roadmap.geo`: Road segment geographical information
 - `roadmap.rel`: Road segment connectivity information
-- Trajectory data file with comma-separated road segment IDs
+- `Trajs_SF.txt`: Trajectory data file with comma-separated road segment IDs
+
+## Installation
+
+1. Create and activate a new virtual environment:
+```bash
+# Using venv (recommended)
+python -m venv mobilitygpt
+source mobilitygpt/bin/activate  # On Unix/macOS
+
+pip install -e . # this will install the dependencies and the package
+```
+
+## Preprocessing
+
+For gravity-based sampling, you need to preprocess the data by generating the gravity-based sampling matrix.
+
+```bash
+python preprocessing/gravity_based_sampling.py
+```
+
+For creating the input data `Trajs_SF.txt` for the model, you can use the following command:
+```bash
+python preprocessing/input_MobilityGPT_data.py
+```
+
+## Usage
+
+### Pretraining
+
+```bash
+python mobilitygpt/train.py --dataset SF --mode pretrain
+```
+
+### SupervisedFine-tuning
+
+```bash
+python mobilitygpt/train.py --dataset SF --mode supervised --model-path model_pretrain
+```
+
+### DPO Training
+```bash
+python mobilitygpt/train.py --dataset SF --mode dpo --create-dpo-dataset --model-path model_supervised
+```
+
+### RLTF (PPO) Training
+
+```bash
+python mobilitygpt/train.py --dataset SF --mode ppo --create-rl-dataset --model-path model_supervised
+```
 
 ## Configuration
 
@@ -31,7 +80,6 @@ Your dataset directory (e.g., `SF-Taxi/`) should contain:
 - `dataset`: Dataset name (e.g., "SF")
 - `validation_split`: Train/validation split ratio (default: 0.2)
 - `eps`: Epsilon value for differential privacy
-- `num_samples`: Number of synthetic trajectories to generate
 
 ### Model Configuration
 - `block_size`: Maximum trajectory length
