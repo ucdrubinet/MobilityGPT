@@ -37,16 +37,22 @@ pip install -e . # this will install the dependencies and the package
 
 ## Preprocessing
 
+
+For creating the input data `Trajs_SF.txt` for the model, you can use the following command:
+```bash
+python preprocessing/input_MobilityGPT_data.py
+```
+
 For gravity-based sampling, you need to preprocess the data by generating the gravity-based sampling matrix.
 
 ```bash
 python preprocessing/gravity_based_sampling.py
 ```
 
-For creating the input data `Trajs_SF.txt` for the model, you can use the following command:
-```bash
-python preprocessing/input_MobilityGPT_data.py
-```
+
+## Dataset
+
+The project utilizes publicly available San Francisco Taxi dataset. We preprocessed and extracted map-matched trajectories. We follow the same data structure for all datasets (Porto and Beijing) and inspired from the [Ts-TrajGen](https://github.com/WenMellors/TS-TrajGen).
 
 ## Usage
 
